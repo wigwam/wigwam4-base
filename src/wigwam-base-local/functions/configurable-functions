@@ -1,0 +1,191 @@
+#! /bin/sh
+#
+# the first line is for syntax coloring in VIM only
+# you can't execute this file directly
+# only source it from other shell scripts
+
+# NB: this is the one file that has to manually figure out whether to 
+# override itself
+
+# temporary variables not generally unset here, because, it was noticed
+# that this caused solaris /bin/sh to dump core ... 
+#
+# WTF (?)
+#
+# must figure this out
+
+if test -r "$PLAYPEN_ROOT/libexec/functions/configurable-functions"
+  then
+    . "$PLAYPEN_ROOT/libexec/functions/configurable-functions"
+  else
+    configurable_which () \
+      {
+        for configurable_which_file in                  \
+            "$PLAYPEN_ROOT/$1.local"                    \
+            "$PLAYPEN_ROOT/$1"                          \
+            "$PLAYPEN_ROOT/ext/$1"
+          do
+            if test -r "$configurable_which_file"
+              then
+                eval $2=\"\$configurable_which_file\"
+
+                # unset configurable_which_file
+
+                return 0
+              fi
+          done
+
+        # unset configurable_which_file
+
+        return 1
+      }
+
+    configurable_source () \
+      {
+        # (relativepath)
+
+        configurable_source_once=0
+        configurable_source_exportguard=0
+
+        while test $# -gt 1
+          do
+            case "$1" in 
+              --once)
+                configurable_source_once=1
+                shift
+
+                ;;
+              --exportguard)
+                configurable_source_exportguard=1
+                shift
+
+                ;;
+              --)
+                shift
+                break;
+
+                ;;
+              *)
+                break;
+
+                ;;
+            esac
+          done
+
+
+        configurable_source_x=`                                     \
+                perl -e                                             \
+                  '$ARGV[0] =~ s%\W%_%g; print $ARGV[0]' "$1"`
+
+
+        if test "x$configurable_source_once" = x1
+          then
+            if eval test "x\${__guard_$configurable_source_x}" = x1
+              then
+                return 0
+              fi
+          fi
+
+           configurable_which "$1" configurable_source_file             \
+        &&                                                              \
+          {
+            if test "x$configurable_source_once" = x1
+              then
+                eval __guard_$configurable_source_x=1
+
+                if test "x$configurable_source_exportguard" = x1
+                  then
+                    eval export __guard_$configurable_source_x
+                  fi
+              fi
+
+            . "$configurable_source_file"
+          }
+
+        # unset configurable_source_once
+        # unset configurable_source_exportguard
+        # unset configurable_source_x
+      }
+
+    configurable_foreach () \
+      {
+        configurable_foreach_arg=$1
+        shift
+
+        for configurable_foreach_which in                               \
+                "$PLAYPEN_ROOT/ext/$configurable_foreach_arg"           \
+                "$PLAYPEN_ROOT/$configurable_foreach_arg"               \
+                "$PLAYPEN_ROOT/$configurable_foreach_arg.local"
+          do
+            if test -r "$configurable_foreach_which"
+              then
+                eval "$@" || return 1
+              fi
+          done
+
+        # unset configurable_foreach_arg
+        # unset configurable_foreach_which
+
+        return 0
+      }
+
+    configurable_glob () \
+      {
+          eval for configurable_glob_x in \"\$PLAYPEN_ROOT/\"$1.local      \
+                                          \"\$PLAYPEN_ROOT/\"$1            \
+                                          \"\$PLAYPEN_ROOT\"/ext/$1 \;     \
+                 do                                                        \
+                   if test -r \"\$configurable_glob_x\" \;                 \
+                     then                                                  \
+                       echo \"\$configurable_glob_x\" \;                   \
+                     fi \;                                                 \
+                 done                                                      \
+        | perl -e '$esc=quotemeta ($ARGV[0]);
+                   shift @ARGV;
+                   print join "",
+                         map { $_->[1] } 
+                         grep { ! $seen{$_->[0]}++ }
+                         map { $s = $_; 
+                               s%^$esc(/ext)?/?%%; 
+                               s%\.local$%%;
+                               [ $_, $s ] }
+                         <>;' "$PLAYPEN_ROOT"
+
+        # unset configurable_glob_x
+
+        return 0
+      }
+
+    configurable_test_r () \
+      {
+        configurable_which "$1" configurable_test_r_var || return 99
+
+        # unset configurable_test_r_var
+
+        return 0
+      }
+
+    configurable_run () \
+      {
+        configurable_which "$1" configurable_run_which || return 99
+        shift
+
+        "$configurable_run_which" "$@" || return $?
+
+        # unset configurable_run_which
+
+        return 0
+      }
+
+    configurable_arg () \
+      {
+        configurable_which "$1" configurable_arg_which || return 99
+        shift
+
+        "$@" "$configurable_arg_which" || return $?
+
+        # unset configurable_arg_which
+
+        return 0
+      }
+  fi

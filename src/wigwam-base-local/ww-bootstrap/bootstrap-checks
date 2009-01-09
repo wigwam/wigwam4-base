@@ -1,0 +1,11 @@
+#! /bin/sh = for syntax highlighting only
+#
+# Start bootstrap-checks
+#
+# Right now this is just a place holder, "Don't need no stinkin checks!"
+#
+#test "x$quiet" = "x1" || printf "Checking wigwam requisites... " 1>&2
+#
+#
+#test "x$quiet" = "x1" || echo " looks good." 1>&2
+

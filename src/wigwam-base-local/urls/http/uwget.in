@@ -1,0 +1,203 @@
+#! @PERL@ 
+
+use strict;
+
+use Fcntl;
+use Socket;
+
+local $SIG{'__WARN__'} = 
+  sub 
+    {  
+      if ($ENV{"WIGWAM_BASE_WARN"})
+        {
+          warn "Warning: uwget: ", @_;
+        }
+    };
+
+local $SIG{'__DIE__'} = 
+  sub 
+    {  
+      unless ($ENV{"WIGWAM_BASE_NO_FATAL"})
+        {
+          die "Fatal: uwget: ", @_;
+        }
+
+      exit 1;
+    };
+
+die "bad LANG \"$ENV{'LANG'}\" ne \"C\"" unless $ENV{'LANG'} eq 'C';
+
+sub http_url_parse ($)
+{
+  my ($url) = @_;
+
+  $url =~ m#^http://([^/:]+)(:(\d+))?(/(.+)?)?$# or die "bad url $url";
+
+  my $host = $1;
+  my $port = $3 || 80;
+  my $path = $5;
+
+  if (defined $path)
+    {
+      $path =~ s#^/##;
+      $path =~ s#//#/#g;
+    }
+
+  return ($host, $port, $path);
+}
+
+sub url_parse ($)
+{
+  my ($url) = @_;
+
+  $url =~ m#^http://([^/:]+)(:(\d+))?(/(.*))?$# or die "bad url $url";
+
+  my $host = $1;
+  my $port = $3 || 80;
+  my $path = $5;
+
+  if (defined $path)
+    {
+      $path =~ s#^/##;
+      $path =~ s#//#/#g;
+    }
+
+  return ($host, $port, $path);
+}
+
+sub safe_connect_host ($$)
+{
+  my ($host, $port) = @_;
+
+  my $proto = getprotobyname('tcp');
+
+  socket (SERVER, PF_INET, SOCK_STREAM, $proto) or die $!;
+
+  my $iaddr = gethostbyname ($host);
+  my $sin = sockaddr_in($port, $iaddr);
+  connect (SERVER, $sin) or die $!;
+
+  my $old_fh = select SERVER;
+  $| = 1;
+  select $old_fh;
+
+  return *SERVER;
+}
+
+sub download_http ($$$$$)
+{
+  my ($host, $port, $path, $outfilename, $progress) = @_;
+
+  my $success = 0;
+
+  while (! $success)
+    {
+      my $connect_host;
+      my $connect_port;
+      my $got_first_line;
+      my $location;
+      my $status_code;
+      local *SERVER;
+
+      if ($ENV{"http_proxy"})
+        {
+          ($connect_host, $connect_port, undef) = 
+            http_url_parse ($ENV{"http_proxy"});
+        }
+      else
+        {
+          $connect_host = $host;
+          $connect_port = $port;
+        }
+
+      *SERVER = safe_connect_host ($connect_host, $connect_port);
+
+      if ($ENV{"http_proxy"})
+        {
+          print SERVER "GET HTTP://${host}:${port}/$path HTTP/1.0\r\n",
+                       "Host: ${host}\r\n",
+                       "\r\n";
+        }
+      else
+        {
+          print SERVER "GET /$path HTTP/1.0\r\n",
+                       "Host: ${host}\r\n",
+                       "\r\n";
+        }
+
+      $got_first_line = 0;
+      undef $status_code;
+      undef $location;
+
+      while (defined ($_ = <SERVER>))
+        {
+          if ($_ eq "\r\n")
+            {
+              last;
+            }
+
+          if (! $got_first_line)
+            {
+              if (! m#^HTTP/1.\d (\d+)#)
+                {
+                  die "bad first line $_ from HTTP server";
+                }
+
+              $status_code = $1;
+              $got_first_line = 1;
+
+              next;
+            }
+
+          if (m#^Location:(.*)\r\n#)
+            {
+              ($host, $port, $path) = http_url_parse ($1);
+
+              last;
+            }
+        }
+
+      if (! $got_first_line)
+        {
+          die "missing first line from HTTP server";
+        }
+
+      if ($status_code == 200)
+        {
+          my $buf;
+
+          sysopen OUTFILE, $outfilename, O_WRONLY | O_CREAT | O_TRUNC, 0644 
+            or die "$outfilename: $!";
+
+          while (read (SERVER, $buf, 65536))
+            {
+              print OUTFILE $buf;
+              $progress && print STDERR "\000ww-propeller_nolog\n";
+            }
+
+          close OUTFILE;
+
+          $success = 1;
+        }
+      elsif ($status_code == 302)
+        {
+          next;
+        }
+      else
+        {
+          die "got status code $status_code";
+        }
+
+      close SERVER;
+    }
+}
+
+my $url = shift @ARGV or die "no url";
+my $target = shift @ARGV or die "no target";
+my $progress = shift @ARGV || 0;
+
+my ($host, $port, $path) = url_parse ($url);
+
+download_http ($host, $port, $path, $target, $progress);
+
+exit 0

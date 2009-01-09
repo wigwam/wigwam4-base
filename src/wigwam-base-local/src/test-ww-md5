@@ -1,0 +1,13 @@
+#! /bin/sh
+
+zeroes=`dd if=/dev/zero count=10 bs=512 2>/dev/null | ./ww-md5`
+
+test "x$zeroes" = "x32ca18808933aa12e979375d07048a11" || exit 1
+
+dood=`echo "yodood" | ./ww-md5`
+
+test "x$dood" = "x17a2398f3404ad3d6c2f1a8e9abd1c03" || exit 1
+
+mega=`./ww-md5 /dev/null`
+
+test "x$mega" = "xd41d8cd98f00b204e9800998ecf8427e" || exit 1

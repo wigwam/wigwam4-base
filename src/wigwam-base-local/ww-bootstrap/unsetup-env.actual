@@ -1,0 +1,6 @@
+#!/bin/cat
+#
+# Source this script to restore your environment to it's state prior to
+# source-ing setup-env.
+
+eval "`ext/libexec/environment/print-unsetup-environment --0-hack $?0`"

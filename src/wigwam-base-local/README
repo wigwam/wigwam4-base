@@ -1,0 +1,11 @@
+Differences with wigwam 3:
+
+sanitized environment w/overrides
+
+X.local replaces X, always
+
+pre-dep is depricated, and merged with dep files
+therefore, you can't selectively override pre-dep
+instead you must override (pre-dep + dep) via dep
+
+config-order is configurable by packages/playpen now.

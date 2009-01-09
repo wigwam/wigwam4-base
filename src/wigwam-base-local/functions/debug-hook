@@ -1,0 +1,10 @@
+#!/bin/sh
+
+debug_script_basename=`perl -e '$ARGV[0] =~ s%(.*)/%%g; print $ARGV[0]' "$0"`
+debug_nice_script_basename=`perl -e '$ARGV[0] =~ s%\W%_%g;
+                                     print $ARGV[0]' "$debug_script_basename"`
+
+if eval test "\"x\${DEBUG_${debug_nice_script_basename}}\"" != "\"x\""
+  then
+    set -x
+  fi

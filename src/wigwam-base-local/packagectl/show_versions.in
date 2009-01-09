@@ -1,0 +1,32 @@
+#! @PERL@ 
+
+use strict;
+
+use Packagectl::Version qw (to_interval intersect);
+use Wigwam::DB;
+
+my $versions_dbm = shift @ARGV or die "$0: missing versions dbm argument";
+
+my $versions = Wigwam::DB::wigdbmopen $versions_dbm, 0666 
+  or die "$0: can't open $versions_dbm: $!";
+
+while (@ARGV)
+  {
+    my $package = shift @ARGV;
+    my $version = shift @ARGV || "any";
+    my $version_int = to_interval ($version);
+
+    if ($versions->{$package})
+      {
+        my @versions = grep { intersect ($version_int,
+                                         to_interval ($_)) } 
+                       split /\000/, $versions->{$package};
+
+        foreach my $v (@versions)
+          {
+            print "$package $v\n";
+          }
+      }
+  }
+
+exit (0);

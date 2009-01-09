@@ -1,0 +1,16 @@
+#! /bin/sh
+
+. ../functions
+
+. ./test_functions
+
+
+interactive_variables=""
+ww_int foo
+compare "$interactive_variables" "foo"
+
+ww_int bar baz 
+compare "$interactive_variables" "foo bar baz"
+
+ww_int bar baz 
+compare "$interactive_variables" "foo bar baz"

@@ -1,0 +1,12 @@
+#! /bin/sh
+
+. ../functions
+
+. ./test_functions
+
+interactive_variables="balah balh blah"
+ww_int_clear 
+
+test "x$interactive_variables" = "x" || 
+  die "interactive_variables should be empty"
+

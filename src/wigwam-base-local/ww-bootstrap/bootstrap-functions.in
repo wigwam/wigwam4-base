@@ -1,0 +1,145 @@
+#! /bin/sh - for syntax hilighting only
+# 
+# Start bootstrap-functions
+#
+
+qecho()
+{
+  test "x$quiet" = "x1" || echo $*
+}
+
+make_dir()
+{
+  mkdir $1 || {
+    echo "$id: ERROR: couldn't make directory: $1" 1>&2
+    return 1
+  }
+  return 0
+}
+
+do_cd()
+{
+  cd $1 || {
+    echo "$id: ERROR: failed to cd to: $1" 1>&2
+    return 1
+  }
+  return 0
+}
+
+tmp_dirname()
+{
+  if test "x$TMPDIR" != "x"; then
+    echo "$TMPDIR/wigwam-base-$$"
+  else 
+    if test "x$TMP" != "x"; then
+      echo "$TMP/wigwam-base-$$"
+    else 
+      if test "x$TEMP" != "x"; then
+        echo "$TEMP/wigwam-base-$$"
+      else
+        echo "/tmp/wigwam-base-$$"
+      fi
+    fi
+  fi
+
+  return 0
+}
+
+setup_dirs()
+{
+  # If we are not from cvs then we neen to initialize the non-ext
+  # dir struct
+  prefix=""
+  if test "x$from_cvs" = "x0"; then
+    make_dir $project || return 1
+    do_cd $project || exit 1
+    echo ext >>.cvsignore
+    echo '*.dist' >>.cvsignore
+    echo '*.local' >>.cvsignore
+    echo 'setup-env' >>.cvsignore
+    echo 'unsetup-env' >>.cvsignore
+    make_dir etc || return 1
+    echo '*.dist' >> etc/.cvsignore
+    echo '*.local' >> etc/.cvsignore
+    echo $project >etc/project-name || return 1
+    spew_autogen_sh >autogen.sh
+    chmod +x autogen.sh
+    spew_setup_env >setup-env
+    spew_unsetup_env >unsetup-env
+    make_dir bin || return 1
+    echo '*.dist' >> bin/.cvsignore
+    echo '*.local' >> bin/.cvsignore
+    test "x$package_archives" = "x" ||
+      for pa in $package_archives; do
+	echo $pa >>etc/package-archives
+      done
+  else
+    spew_setup_env >setup-env
+    spew_unsetup_env >unsetup-env
+  fi
+
+  return 0
+}
+
+build_base()
+{
+  tmpdir=`tmp_dirname`
+  rm -rf "$tmpdir"
+  make_dir "$tmpdir" || return 1
+  do_cd "$tmpdir" || return 1
+  spew_wigwam_base | tar -zxf - || {
+    echo "$id: ERROR: unpack failed" 1>&2
+    return 1
+  }
+  do_cd wigwam-base-@VERSION@ || return 1
+  ./configure --prefix="$PLAYPEN_ROOT"/ext                              \
+              --disable-bootstrap --disable-check-syntax || return 1
+  ./ww-make || return 1
+  ./ww-make install || return 1
+  do_cd "$cwd" || return 1
+  test "x$from_cvs" = "x0" && { cp "$0" "$PLAYPEN_ROOT"/bin || return 1; }
+  cd "$PLAYPEN_ROOT"/bin
+  rm -rf "$tmpdir"
+  return 0
+}
+
+#
+# this sets various variables when booting a project
+# checked out from a CVS archive
+#
+from_cvs_func()
+{
+  from_cvs=1
+  project=`cat etc/project-name`
+  package_archives="`cat etc/package-archives`"
+}
+
+bootstrap()
+{
+  bs_logfile=/tmp/wigwam-bootstrap-$project-$$.log
+  setup_dirs || exit 1
+  qecho "Please bear with me as I bootstrap: $project"
+  qecho "I'll be using the following package archives:"
+  for pa in $package_archives; do
+    qecho "    $pa";
+  done
+  qecho "It should just take a moment or two and should any"
+  qecho "problems arise errors will be logged to: $bs_logfile"
+  qecho
+  build_base >$bs_logfile 2>&1 || {
+    qecho "Woops, something went wrong! Please check the afore mentioned logfile."
+    exit 1
+  }
+
+  qecho "Cool, that went well, now I'll update-packages, as before, if something"
+  qecho "goes wrong, look in the log file."
+
+  cd "$PLAYPEN_ROOT"
+  touch ext/.wigwam-bootstrap
+
+  . ./setup-env
+  packagectl update-packages || exit 1
+  
+  qecho "I did it.  You're all set."
+  return 0
+}

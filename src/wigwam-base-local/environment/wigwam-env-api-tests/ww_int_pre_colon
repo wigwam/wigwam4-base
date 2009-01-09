@@ -1,0 +1,34 @@
+#! /bin/sh
+
+. ../functions
+
+. ./test_functions
+
+# *_check VARIABLE VALUE EXPECTED_VALUE
+
+check () {
+  ww_int_pre_colon "$1" "$2"
+  eval 'compare "$'"$1"'" "$3"' # compare increments test number and can die
+  ww_has_componant ' ' "$interactive_variables" "$1"  ||
+    die "test #$compare_count: failed '$1' is not in interactive_variables."
+}
+
+foo=""
+check foo 'bar:blah' 'bar:blah' 
+check foo 'blah' 'bar:blah'
+check foo 'blah:de:bar:dah' 'de:dah:bar:blah' 
+
+bob=""
+check bob 'bar:blah' 'bar:blah' 
+check bob 'blah' 'bar:blah'
+check bob 'blah:de:bar:dah' 'de:dah:bar:blah' 
+bob=""
+check bob 'bar:blah' 'bar:blah' 
+
+ted=""
+check ted 'bar:blah' 'bar:blah' 
+check ted 'blah' 'bar:blah'
+check ted 'blah:de:bar:dah' 'de:dah:bar:blah' 
+bob=""
+check bob 'bar:blah' 'bar:blah' 
+

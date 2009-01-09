@@ -1,0 +1,413 @@
+#! /bin/sh
+#
+# the first line is for syntax coloring in VIM only
+# you can't execute this file directly
+# only source it from other shell scripts
+
+configurable_source --once libexec/archives/functions
+configurable_source --once libexec/functions/configurable-functions
+configurable_source --once libexec/functions/wigwam-base-functions
+
+packagectl_run_helper_run () \
+  {
+    # (actionpath, action, type, package, version, args)
+
+    configurable_which "$1" packagectl_run_helper_run_w || return 0
+    shift
+
+    if ww-test-x "$packagectl_run_helper_run_w"
+      then
+        packagectl_run_helper_run_interpreter=""
+      else
+        packagectl_run_helper_run_interpreter=/bin/sh
+      fi
+
+       ww-propeller                                                     \
+         "$3-$4 ${1}ing"                                                \
+         "$PLAYPEN_ROOT/ext/src/logs/$3-$4/$1.log"                      \
+         $packagectl_run_helper_run_interpreter                         \
+         "$packagectl_run_helper_run_w"                                 \
+         "$@"                                                           \
+    ||                                                                  \
+      {
+        packagectl_run_helper_run_rv=$?
+
+           test $packagectl_run_helper_run_rv -eq 99                    \
+        || test "x$1" = "xcheck-system"                                 \
+        || wigwam_base_critical                                         \
+             "$3-$4 $packagectl_run_helper_run_act failed"
+
+        return $packagectl_run_helper_run_rv
+      }
+
+    return 0
+  }
+
+packagectl_run_helper () \
+  {
+    # (action, type, package, version, args)
+
+    rm -f "${PLAYPEN_ROOT}/ext/src/logs/$3-$4/$1.log"
+
+       packagectl_run_helper_run "packages/$3-$4/$1" "$@"               \
+    && packagectl_run_helper_run "packages/$3/$1" "$@"                  \
+    && packagectl_run_helper_run "libexec/packagectl/$2/$1" "$@"        \
+    && packagectl_run_helper_run "libexec/packagectl/BASE/$1" "$@"
+
+    packagectl_run_helper_rv=$?
+
+       test -f "${PLAYPEN_ROOT}/ext/src/logs/$3-$4/$1.log"              \
+    && ww-test-empty "${PLAYPEN_ROOT}/ext/src/logs/$3-$4/$1.log"        \
+    && rm -f "${PLAYPEN_ROOT}/ext/src/logs/$3-$4/$1.log"
+
+    test $packagectl_run_helper_rv -eq 99 && return 0
+
+    return $packagectl_run_helper_rv
+  }
+
+packagectl_run_helper_pre () \
+  {
+    # (action, type, package, version, args)
+
+    rm -f "${PLAYPEN_ROOT}/ext/src/logs/$3-$4/$1.log"
+
+       packagectl_run_helper_run "libexec/packagectl/BASE/$1" "$@"      \
+    && packagectl_run_helper_run "libexec/packagectl/$2/$1" "$@"        \
+    && packagectl_run_helper_run "packages/$3/$1" "$@"                  \
+    && packagectl_run_helper_run "packages/$3-$4/$1" "$@"
+
+    packagectl_run_helper_pre_rv=$?
+
+       test -f "${PLAYPEN_ROOT}/ext/src/logs/$3-$4/$1.log"              \
+    && ww-test-empty "${PLAYPEN_ROOT}/ext/src/logs/$3-$4/$1.log"        \
+    && rm -f "${PLAYPEN_ROOT}/ext/src/logs/$3-$4/$1.log"
+
+    test $packagectl_run_helper_pre_rv -eq 99 && return 0
+
+    return $packagectl_run_helper_pre_rv
+  }
+
+packagectl_run_method () \
+  {
+    # (type, action, package, version, args)
+
+    ww-mkdir-p "${PLAYPEN_ROOT}/ext/src/logs/$3-$4" || return 1
+
+    # legacy environment variables 
+
+    EXT_PACKAGE=$3
+    export EXT_PACKAGE
+
+    EXT_VERSION=$4
+    export EXT_VERSION
+
+    EXT_DIR="${PLAYPEN_ROOT}/ext/"
+    export EXT_DIR
+
+    EXT_PACKAGEDIR="${PLAYPEN_ROOT}/ext/packages/$3-$4"
+    export EXT_PACKAGEDIR
+
+    EXT_PKGBUILDDIR="${PLAYPEN_ROOT}/ext/src/$3-$4"
+    export EXT_PKGBUILDDIR
+
+    packagectl_run_method_type=$1
+    shift
+
+    packagectl_run_method_act=$1
+    shift
+
+       packagectl_run_helper_pre "pre-$packagectl_run_method_act"       \
+                                 "$packagectl_run_method_type" "$@"     \
+    || return 1
+
+       packagectl_run_helper "$packagectl_run_method_act"               \
+                             "$packagectl_run_method_type" "$@"         \
+    || return 1
+
+       packagectl_run_helper "post-$packagectl_run_method_act"          \
+                             "$packagectl_run_method_type" "$@"         \
+    || return 1
+    
+    return 0
+  }
+
+packagectl_mark_installed () \
+  {
+    if grep "^$1 $2" "$PLAYPEN_ROOT/ext/etc/installed-packages" >/dev/null 2>&1
+      then
+          {
+            grep -v "^$1 $2" "$PLAYPEN_ROOT/ext/etc/installed-packages" 2>&-
+            echo "$1 $2 2"
+          } > "$PLAYPEN_ROOT/ext/etc/installed-packages.new"                \
+        ||                                                                  \
+          {
+            wigwam_base_critical "error marking $1-$2 installed twice"
+            return 1
+          }
+      else
+          {
+            touch "$PLAYPEN_ROOT/ext/etc/installed-packages"
+            cat "$PLAYPEN_ROOT/ext/etc/installed-packages"
+            echo "$1 $2"
+          } > "$PLAYPEN_ROOT/ext/etc/installed-packages.new"                \
+        ||                                                                  \
+          {
+            wigwam_base_critical "error marking $1-$2 installed"
+            return 1
+          }
+      fi
+
+    mv -f "$PLAYPEN_ROOT/ext/etc/installed-packages.new"                \
+          "$PLAYPEN_ROOT/ext/etc/installed-packages"
+
+
+    if test "x$2" != xlocal
+      then
+        touch "$PLAYPEN_ROOT/etc/project-packages"
+
+        if grep "^$1 $2" "$PLAYPEN_ROOT/etc/project-packages" >/dev/null 2>&1
+          then
+            true
+          else
+              {
+                grep -v "^$1 " "$PLAYPEN_ROOT/etc/project-packages" 2>&-
+                echo "$1 $2"
+              } > "$PLAYPEN_ROOT/etc/project-packages.new"              \
+            ||
+              {
+                wigwam_base_critical "error recording $1-$2 for project"
+                return 1
+              }
+
+             mv -f "$PLAYPEN_ROOT/etc/project-packages.new"             \
+                   "$PLAYPEN_ROOT/etc/project-packages"                 \
+          || return 1
+        fi
+      fi
+
+    return $?
+  }
+
+packagectl_unmark_installed () \
+  {
+    if   grep "^$1 $2 2" "$PLAYPEN_ROOT/ext/etc/installed-packages"     \
+       >/dev/null 2>&1
+      then
+          {
+            grep -v "^$1 $2" "$PLAYPEN_ROOT/ext/etc/installed-packages"
+            echo "$1 $2" 
+          }                                                             \
+        > "$PLAYPEN_ROOT/ext/etc/installed-packages.new"
+
+           mv -f "$PLAYPEN_ROOT/ext/etc/installed-packages.new"         \
+                 "$PLAYPEN_ROOT/ext/etc/installed-packages"             \
+        || return 1
+
+        return 0
+      else 
+        if   grep "^$1 $2" "$PLAYPEN_ROOT/ext/etc/installed-packages"   \
+           >/dev/null 2>&1
+          then
+              grep -v "^$1 $2"                                          \
+                      "$PLAYPEN_ROOT/ext/etc/installed-packages"        \
+            > "$PLAYPEN_ROOT/ext/etc/installed-packages.new"
+
+               mv -f "$PLAYPEN_ROOT/ext/etc/installed-packages.new"     \
+                     "$PLAYPEN_ROOT/ext/etc/installed-packages"         \
+            || return 1
+          fi
+      fi
+
+    if grep "^$1 $2" "$PLAYPEN_ROOT/etc/project-packages" >/dev/null 2>&1
+      then
+          grep -v "^$1 $2" "$PLAYPEN_ROOT/etc/project-packages"         \
+        > "$PLAYPEN_ROOT/etc/project-packages.new"
+
+           mv -f "$PLAYPEN_ROOT/etc/project-packages.new"               \
+                 "$PLAYPEN_ROOT/etc/project-packages"                   \
+        || return 1
+      fi
+
+    return 0
+  }
+
+packagectl_get_package_type () \
+  {
+       configurable_which "packages/$1-$2/type"                     \
+                          packagectl_pipeline_get_package_type_file \
+    || configurable_which "packages/$1/type"                        \
+                          packagectl_pipeline_get_package_type_file \
+    || return 99
+
+    eval $3=\`cat \"\$packagectl_pipeline_get_package_type_file\"\`
+
+    if eval test "x$3" = x
+      then
+        return 1
+      fi
+
+    return 0
+  }
+
+packagectl_pipeline () \
+  {
+    # (packagectl_pipeline_action, package, version)
+
+    wigwam_base_assert_nonempty "$0" "$1" || return 1
+    wigwam_base_assert_nonempty "$0" "$2" || return 1
+    wigwam_base_assert_nonempty "$0" "$3" || return 1
+
+    # NB: no need to worry about recursive access of packagectl_pipeline_action,
+    #     since we don't need it to persist across function calls
+    #     BUT if packagectl_run_method ever starts recursively 
+    #     calling packagectl_pipeline, then packagectl_pipeline_type has
+    #     to be protected from recursive access via eval
+
+    packagectl_pipeline_action=$1
+    shift
+
+    case "$packagectl_pipeline_action" in
+      uninstall)
+           packagectl_get_package_type "$1" "$2" packagectl_pipeline_type    \
+        || return 1
+
+           packagectl_run_method "$packagectl_pipeline_type" uninstall "$@"  \
+        || return $?
+
+        packagectl_unmark_installed "$@" || return $?
+
+        ;;
+      install)
+           packagectl_pipeline build "$@"                               \
+        ||                                                              \
+          {
+            wigwam_base_critical "$1-$2 install: build failed"
+            return 1
+          }
+
+        # cd to build dir for backwards compatibility
+
+           packagectl_get_package_type "$1" "$2" packagectl_pipeline_type    \
+        || return 1
+
+          ( 
+            cd "$PLAYPEN_ROOT/ext/src/$1-$2"
+               packagectl_run_method "$packagectl_pipeline_type"        \
+                                     check-system "$@"                  \
+            || packagectl_run_method "$packagectl_pipeline_type"        \
+                                     install "$@"
+          )                                                             \
+        || return $?
+
+        packagectl_mark_installed "$@" || return 1
+       ;;
+
+      build)
+           packagectl_pipeline unpack "$@"                              \
+        ||                                                              \
+          {
+            wigwam_base_critical "$1-$2 build: unpack failed"
+            return 1
+          }
+
+        # cd to build dir for backwards compatibility
+
+           packagectl_get_package_type "$1" "$2" packagectl_pipeline_type    \
+        || return 1
+
+          ( 
+            cd "$PLAYPEN_ROOT/ext/src/$1-$2"
+               packagectl_run_method "$packagectl_pipeline_type"        \
+                                     check-system "$@"                  \
+            || packagectl_run_method "$packagectl_pipeline_type"        \
+                                     build "$@"
+          )                                                             \
+        || return $?
+
+        ;;
+
+      unpack)
+           packagectl_pipeline download "$@"                            \
+        ||                                                              \
+          {
+            wigwam_base_critical "$1-$2 unpack: download failed"
+            return 1
+          }
+
+           packagectl_get_package_type "$1" "$2" packagectl_pipeline_type    \
+        || return 1
+
+           packagectl_run_method "$packagectl_pipeline_type"            \
+                                 check-system "$@"                      \
+        || packagectl_run_method "$packagectl_pipeline_type"            \
+                                 unpack "$@"                            \
+        || return $?
+
+        ;;
+
+      check-system)
+           packagectl_pipeline download "$@"                            \
+        ||                                                              \
+          {
+            wigwam_base_critical "$1-$2 check-system: download failed"
+            return 1
+          }
+
+           packagectl_get_package_type "$1" "$2" packagectl_pipeline_type    \
+        || return 1
+
+           packagectl_run_method "$packagectl_pipeline_type"            \
+                                 check-system "$@"                      \
+        || return $?
+
+        ;;
+
+      download)
+           packagectl_get_package_type "$1" "$2" packagectl_pipeline_type    \
+        || packagectl_pipeline_type="unknown"
+
+           packagectl_run_method "$packagectl_pipeline_type"            \
+                                 download "$@"                          \
+        || return 1
+
+        ;;
+
+      reinstall)
+        # don't download ... don't want to clobber installed_files file
+
+           packagectl_get_package_type "$1" "$2" packagectl_pipeline_type    \
+        || return 1
+
+           packagectl_run_method "$packagectl_pipeline_type"            \
+                                 reinstall "$@"                         \
+        || return $?
+
+        ;;
+
+      upgrade)
+           packagectl_pipeline download "$@"                            \
+        ||                                                              \
+          {
+            wigwam_base_critical "$1-$2 upgrade: download failed"
+            return 1
+          }
+
+           packagectl_get_package_type "$1" "$2" packagectl_pipeline_type    \
+        || return 1
+
+           packagectl_run_method "$packagectl_pipeline_type"            \
+                                 upgrade "$@"                           \
+        || return $?
+
+        ;;
+
+      *)
+        wigwam_base_critical "unknown packagectl_pipeline_action"       \
+                             "'$packagectl_pipeline_action'"
+        return 1
+
+        ;;
+    esac
+
+    return 0
+  }

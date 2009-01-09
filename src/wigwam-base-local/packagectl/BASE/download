@@ -1,0 +1,37 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/archive/functions
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once libexec/packagectl/BASE/functions
+
+# (action, type, package, version, args)
+
+packagectl_BASE_parse_args "$@" || exit 1
+
+if test -r "${PLAYPEN_ROOT}/ext/packages/$package-$version"
+  then
+    rm -rf "${PLAYPEN_ROOT}/ext/packages/$package-$version"
+  fi
+
+ww-mkdir-p "${PLAYPEN_ROOT}/ext/packages/$package-$version" || return $?
+
+cd "${PLAYPEN_ROOT}/ext/packages/$package-$version"
+
+archive=`packagectl_BASE_get_package_archive "$package" "$version"`
+
+if test "x$archive" != x
+  then
+       archive_download_package "$archive" "$package" "$version"        \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$1-$2 download:"                             \
+                         "failed with archive '$archive'"
+
+        exit 1
+      }
+  fi
+
+exit 0

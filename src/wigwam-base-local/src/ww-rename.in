@@ -1,0 +1,18 @@
+#! @PERL@
+
+my $code = shift @ARGV;
+
+foreach (@ARGV) 
+  { 
+    my $old = $_;
+
+    eval $code;
+
+    if ( $old ne $_ )
+      {
+        # we use mv here, instead of perl rename
+        # because it is sometimes more sophisticated (e.g., across filesystems)
+
+        system "mv", "-f", $old, $_;
+      }
+  }

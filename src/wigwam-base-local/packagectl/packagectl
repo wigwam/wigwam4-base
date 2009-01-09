@@ -1,0 +1,696 @@
+#! /bin/sh
+
+. "$PLAYPEN_ROOT/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/archive/functions
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/packagectl/functions
+configurable_source --once --exportguard libexec/environment/load-environment
+
+packagectl_usage () \
+  {
+    case "$1" in
+      sync|update)
+        echo "
+packagectl sync [--progress]
+
+Refresh the list of available packages from the project's package archive(s).
+
+Optional arguments::
+
+--progress: Show progress messages suitable for use with ww-propeller.
+" 1>&2
+
+        ;;
+
+      sort)
+        echo "
+packagectl sort
+
+Print the set of installed packages in dependency order, i.e., if package
+A depends upon package B, then A appears before B in the list.
+
+Takes no arguments.
+" 1>&2
+
+        ;;
+
+      update-packages)
+        echo "
+packagectl update-packages [--dry-run]
+
+Update the set of installed packages to match the packages listed in 
+etc/project-packages and etc/in-project-packages.
+
+Optional arguments::
+
+--dry-run       Show what would be done, but don't do anything.
+" 1>&2 
+        ;;
+
+      list-*)
+        echo "
+packagectl $action [ package version ] [ package version ]
+
+Lists the meta-data (dependencies, conflicts, or provides) associated 
+with packages.
+
+If no arguments are given, list-dependencies for all project-packages
+and in-project-packages.
+
+Optional arguments:
+
+package         The name of the package.
+version         The version of the package.  The last version can be ommitted,
+                in which case, 'any' is assumed.
+" 1>&2
+        ;;
+
+      install)
+        echo "
+packagectl install [--dry-run] package [ version ] [ package version ]
+
+Install packages.  A dependencies necessary to install the package are
+also installed.
+
+Arguments:
+
+--dry-run       Show what would be done, but don't do anything.
+package         The name of the package to install.
+version         The version of the package to install.  The last version 
+                can be ommitted, in which case, 'any' is assumed.
+" 1>&2
+        ;;
+
+      uninstall)
+        echo "
+packagectl uninstall [--dry-run] package [ package ... ]
+
+Uninstall packages.  Fails if any installed packages depending upon packages to
+be uninstalled are not themselves being uninstalled.
+
+Arguments:
+
+--dry-run       Show what would be done, but don't do anything.
+package         The name of the package to uninstall.
+" 1>&2
+        ;;
+
+      reinstall)
+        echo "
+packagectl reinstall [--dry-run] package [ package ... ]
+
+Reinstall packages.  Does not cause dependent packages to be reinstalled.
+
+Arguments:
+
+--dry-run       Show what would be done, but don't do anything.
+package         The name of the package to reinstall.
+" 1>&2
+        ;;
+
+
+      --help|-h|*)
+        echo "
+packagectl command args
+
+where command is:
+
+update-packages         update project to match etc/project-packages
+                                and etc/in-project-packages
+install                 install a package
+uninstall               uninstall a package
+reinstall               reinstall a package
+list-dependencies       list the dependencies of a package
+list-conflicts          list the conflicts of a package
+list-provides           list the provides of a package
+sync                    update package list(s) from package archive(s)
+sort                    sort installed packages in dependency order
+
+for help on command, do 'packagectl command --help'
+" 1>&2
+
+        ;;
+    esac
+
+    exit 1
+  }
+
+#---------------------------------------------------------------------
+#                                main                                 
+#---------------------------------------------------------------------
+
+script_basename=`basename "$0"`
+
+if test $# -lt 1
+  then
+    packagectl_usage "$@"
+    exit 1
+  fi
+
+action=$1
+shift
+
+if test "x$1" = "x--help" || test "x$1" = "x-h"
+  then
+    packagectl_usage "$action" "$@"
+  fi
+
+
+if test "x$action" = "xsync" || test "x$action" = "xupdate"
+  then
+    true
+  else
+    if    configurable_test_r "package-archives/sync_done"              \
+       && test "x$WIGWAM_PACKAGECTL_NO_AUTO_SYNC" = "x1"
+      then
+        true
+      else
+        ww-mkdir-p "$PLAYPEN_ROOT/ext/package-archives"
+        touch "$PLAYPEN_ROOT/ext/package-archives/sync_done"
+
+           packagectl sync                                              \
+        ||                                                              \
+          {
+            rm -f "$PLAYPEN_ROOT/ext/package-archives/sync_done"
+            exit 1
+          }
+      fi
+  fi
+
+case "$action" in
+  --help | -h)
+    packagectl_usage "$action" "$@"
+    exit 1
+
+    ;;
+
+  sync|update)
+    prefix="${PLAYPEN_ROOT}/ext/package-archives"
+    rm -f "$prefix"/*.new* 
+
+      configurable_arg "etc/package-archives" cat                       \
+    | while read archive
+        do
+          case "$archive" in
+            \#*)
+              ;;
+            *)
+              megarchive=`perl -e '$ARGV[0] =~ s%\W%_%g; 
+                                   print $ARGV[0]' "$archive"`
+
+                 ww-mkdir-p "$prefix/$megarchive"                       \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "mkdir -p $prefix/$megarchive failed"
+
+                  exit 1
+                }
+
+              cd "$prefix/$megarchive" || exit 1
+
+                archive_get_resource "$archive" "package_list"          \
+                  "$prefix/$megarchive/package_list"                    \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "get package_list from $archive failed"
+
+                  exit 1
+                }
+
+              if test "x$1" = "x--progress"
+                then
+                  printf "\000ww-propeller_nolog\n" 1>&2
+                fi
+
+                configurable_run "libexec/packagectl/merge_versions"    \
+                  "$prefix/packages.new"                                \
+                  "$prefix/archives.new"                                \
+                  "$archive"                                            \
+                  "$prefix/$megarchive/package_list"                    \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "$merge"                                            \
+                    "$prefix/$megarchive/package_list failed"
+
+                  exit 1
+                }
+
+              if test "x$1" = "x--progress"
+                then
+                  printf "\000ww-propeller_nolog\n" 1>&2
+                fi
+
+                archive_get_resource "$archive" "types"                 \
+                  "$prefix/$megarchive/types"                           \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "get types from $archive failed"
+
+                  exit 1
+                }
+
+              if test "x$1" = "x--progress"
+                then
+                  printf "\000ww-propeller_nolog\n" 1>&2
+                fi
+
+                configurable_run "libexec/packagectl/merge_types"       \
+                  "$prefix/types.new"                                   \
+                  "$prefix/$megarchive/types"                           \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "packagectl/merge_types"                            \
+                    "$prefix/$megarchive/types failed"
+
+                  exit 1
+                }
+
+              if test "x$1" = "x--progress"
+                then
+                  printf "\000ww-propeller_nolog\n" 1>&2
+                fi
+
+                archive_get_resource "$archive" "dependencies"          \
+                  "$prefix/$megarchive/dependencies"                    \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "get dependencies from $archive failed" 
+
+                  exit 1
+                }
+
+              if test "x$1" = "x--progress"
+                then
+                  printf "\000ww-propeller_nolog\n" 1>&2
+                fi
+
+                configurable_run "libexec/packagectl/merge_dependencies"\
+                  "$prefix/dependencies.new"                            \
+                  "$prefix/$megarchive/dependencies"                    \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "packagectl/merge_dependencies"                     \
+                    "$prefix/$megarchive/dependencies failed"
+
+                  exit 1
+                }
+
+              if test "x$1" = "x--progress"
+                then
+                  printf "\000ww-propeller_nolog\n" 1>&2
+                fi
+
+                archive_get_resource "$archive" "conflicts"             \
+                  "$prefix/$megarchive/conflicts"                       \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "get conflicts from $archive failed"
+
+                  exit 1
+                }
+
+              if test "x$1" = "x--progress"
+                then
+                  printf "\000ww-propeller_nolog\n" 1>&2
+                fi
+
+                configurable_run "libexec/packagectl/merge_conflicts"   \
+                  "$prefix/conflicts.new"                               \
+                  "$prefix/$megarchive/conflicts"                       \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "packagectl/merge_conflicts"                        \
+                    "$prefix/$megarchive/conflicts failed"
+
+                  exit 1
+                }
+
+              if test "x$1" = "x--progress"
+                then
+                  printf "\000ww-propeller_nolog\n" 1>&2
+                fi
+
+                archive_get_resource "$archive" "provides"              \
+                  "$prefix/$megarchive/provides"                        \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "get provides from $archive failed"
+
+                  exit 1
+                }
+
+              if test "x$1" = "x--progress"
+                then
+                  printf "\000ww-propeller_nolog\n" 1>&2
+                fi
+
+                configurable_run "libexec/packagectl/merge_provides"    \
+                  "$prefix/provides.new"                                \
+                  "$prefix/$megarchive/provides"                        \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "$script_basename:"                 \
+                    "packagectl/merge_provides"                         \
+                    "$prefix/$megarchive/provides failed"
+
+                  exit 1
+                }
+
+          esac
+        done
+
+    if test $? != 0
+      then
+        exit 1
+      fi
+
+      configurable_run "libexec/packagectl/invert_provides"     \
+        "$prefix/provides.new"                                  \
+        "$prefix/inverse_provides.new"                          \
+    ||                                                          \
+      {
+        wigwam_base_fatal "$script_basename: invert_provides failed"
+
+        exit 1
+      }
+ 
+    ww-rename 's%\.new%%;' "$prefix"/*.new* || exit 1
+
+    ;;
+
+  sort)
+       configurable_run "libexec/packagectl/sort_packages"              \
+         "$PLAYPEN_ROOT/ext/package-archives/dependencies"              \
+         "$PLAYPEN_ROOT/ext/package-archives/provides"                  \
+         "$PLAYPEN_ROOT/ext/package-archives/inverse_provides"          \
+         "$PLAYPEN_ROOT/ext/etc/installed-packages"                     \
+         "$@"                                                           \
+    || exit 1
+
+    ;;
+
+  update-packages)
+    # TODO: this "two phase" update-packages needs to be replaced
+    # with a single call to the planner, since, there are situations 
+    # that this treatment does not address
+
+    if configurable_which "etc/project-packages" packagesfile
+      then
+        # install packages in etc/project-packages
+
+           packagectl exact "$@" `cat "$packagesfile"`                  \
+        || exit 1
+      else 
+           packagectl exact "$@"                                        \
+        || exit 1
+      fi
+
+    # install local packages in etc/in-project-packages
+
+       configurable_which "etc/in-project-packages" mypackagesfile      \
+    &&                                                                  \
+      {
+           ww-test-empty "$mypackagesfile"                              \
+        || packagectl install "$@" `perl -lpe 'chomp; $_ .= " local"'   \
+                                              "$mypackagesfile"`        \
+        || exit 1
+      }
+
+    ;;
+
+  list-*)
+    list_action=`perl -e '$ARGV[0] =~ s/^list-//; print $ARGV[0]' "$action"`
+    if test "x$list_action" = "xconflicts"
+      then
+        list_file="conflict"
+      else 
+        if test "x$list_action" = "xdependencies"
+          then
+            list_file="dep"
+          else
+            if test "x$list_action" = "xpre-dependencies"
+              then
+                list_file="predep"
+              else 
+                list_file="$list_action"
+              fi
+          fi
+      fi
+
+      prefix="${PLAYPEN_ROOT}/ext/package-archives"
+        {
+          if test $# -lt 1
+            then
+              packagesfile=""
+              inpackagesfile=""
+
+              if configurable_test_r etc/project-packages
+                then
+                  if configurable_arg "etc/project-packages" ww-test-empty
+                    then
+                      true
+                    else
+                      configurable_which etc/project-packages packagesfile
+                    fi
+                fi
+
+              if configurable_test_r etc/in-project-packages
+                then
+                  if configurable_arg "etc/in-project-packages" ww-test-empty
+                    then
+                      true
+                    else
+                      configurable_which etc/in-project-packages inpackagesfile
+                    fi
+                fi
+
+              fail=0
+
+              if test "x$packagesfile" != x
+                then
+                     configurable_run                                   \
+                        "libexec/packagectl/show_versions"              \
+                        "$prefix/packages" `cat "$packagesfile"`        \
+                  || fail=1
+                fi
+
+              if test $fail -eq 0 && test "x$inpackagesfile" != x
+                then
+                     configurable_run                                   \
+                       "libexec/packagectl/show_versions"               \
+                       "$prefix/packages" `cat "$inpackagesfile"`       \
+                  || fail=1
+                fi
+
+              if test $fail -eq 1
+                then
+                  wigwam_base_fatal "packagectl: show versions for $1-$2 failed"
+                  # cheesy h4x ... this will make the piped-to command fail
+                  echo ""
+                fi
+            else
+                configurable_run                                        \
+                   "libexec/packagectl/show_versions"                   \
+                   "$prefix/packages" "$@"                              \
+              ||                                                        \
+                {
+                  wigwam_base_fatal                                     \
+                    "packagectl: show versions for $1-$2 failed"
+                  # cheesy h4x ... this will make the piped-to command fail
+                  echo ""
+                }
+            fi
+        }                                                               \
+      | while read package version
+          do
+            if test "x$package" = "x"
+              then
+                # cheesy h4x ... this will make the piped-to command fail
+                echo ""
+                exit 1
+              fi
+
+            if configurable_test_r "packages/$package-$version/$list_file"
+              then
+                   configurable_arg                                       \
+                     "packages/$package-$version/$list_file" cat          \
+                || exit 1
+              else
+                  configurable_run "libexec/packagectl/show_$list_action" \
+                                   "$prefix/$list_action"                 \
+                                   "$package"                             \
+                                   "$version"                             \
+                || exit 1
+              fi
+          done                                                            \
+      | perl -ne 'exit 1 unless /\S/; print unless $seen{$_}++'           \
+    || exit $?
+
+    ;;
+
+  install|reinstall|uninstall|upgrade)
+    while test $# -ge 1
+      do
+        case "$1" in
+          --dry-run)
+            dry_run=1
+
+            shift
+
+            ;;
+          --)
+            shift
+
+            break
+
+            ;;
+          *)
+            break
+
+            ;;
+        esac
+      done
+
+    if test $# -lt 1
+      then
+        packagectl_usage "$action" "$@"
+        exit 1
+      fi
+
+      configurable_run "libexec/packagectl/plan"                        \
+        "$PLAYPEN_ROOT/ext/package-archives/dependencies"               \
+        "$PLAYPEN_ROOT/ext/package-archives/conflicts"                  \
+        "$PLAYPEN_ROOT/ext/package-archives/provides"                   \
+        "$PLAYPEN_ROOT/ext/package-archives/inverse_provides"           \
+        "$PLAYPEN_ROOT/ext/package-archives/packages"                   \
+        "$PLAYPEN_ROOT/ext/etc/installed-packages"                      \
+        "--test" "$action" "$@"                                         \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$script_basename: can't satisfy constraints"
+        exit 1
+      }
+
+        configurable_run "libexec/packagectl/plan"                      \
+          "$PLAYPEN_ROOT/ext/package-archives/dependencies"             \
+          "$PLAYPEN_ROOT/ext/package-archives/conflicts"                \
+          "$PLAYPEN_ROOT/ext/package-archives/provides"                 \
+          "$PLAYPEN_ROOT/ext/package-archives/inverse_provides"         \
+          "$PLAYPEN_ROOT/ext/package-archives/packages"                 \
+          "$PLAYPEN_ROOT/ext/etc/installed-packages"                    \
+          "$action" "$@"                                                \
+    | while read action package version 
+        do
+          if test "x$dry_run" = "x1"
+            then
+              echo "$action $package $version" 
+            else
+              # reload the environment after each action, in case
+              # package has changed the environment, e.g., profile files
+
+              configurable_source libexec/environment/load-environment
+
+                 packagectl_pipeline $action $package $version          \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "failed"
+                  exit 1
+                }
+
+              echo
+            fi
+        done
+
+    exit $?
+
+    ;;
+
+  exact)
+    while test $# -ge 1
+      do
+        case "$1" in
+          --dry-run)
+            dry_run=1
+
+            shift
+
+            ;;
+          --)
+            shift
+
+            break
+
+            ;;
+          *)
+            break
+
+            ;;
+        esac
+      done
+
+      configurable_run "libexec/packagectl/plan"                        \
+        "$PLAYPEN_ROOT/ext/package-archives/dependencies"               \
+        "$PLAYPEN_ROOT/ext/package-archives/conflicts"                  \
+        "$PLAYPEN_ROOT/ext/package-archives/provides"                   \
+        "$PLAYPEN_ROOT/ext/package-archives/inverse_provides"           \
+        "$PLAYPEN_ROOT/ext/package-archives/packages"                   \
+        "$PLAYPEN_ROOT/ext/etc/installed-packages"                      \
+        "--test" "$action" "$@"                                         \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$script_basename: can't satisfy constraints"
+        exit 1
+      }
+
+        configurable_run "libexec/packagectl/plan"                      \
+          "$PLAYPEN_ROOT/ext/package-archives/dependencies"             \
+          "$PLAYPEN_ROOT/ext/package-archives/conflicts"                \
+          "$PLAYPEN_ROOT/ext/package-archives/provides"                 \
+          "$PLAYPEN_ROOT/ext/package-archives/inverse_provides"         \
+          "$PLAYPEN_ROOT/ext/package-archives/packages"                 \
+          "$PLAYPEN_ROOT/ext/etc/installed-packages"                    \
+          "$action" "$@"                                                \
+    | while read action package version 
+        do
+          if test "x$dry_run" = "x1"
+            then
+              echo "$action $package $version" 
+            else
+              # reload the environment after each action, in case
+              # package has changed the environment, e.g., profile files
+
+              configurable_source libexec/environment/load-environment
+
+                 packagectl_pipeline $action $package $version          \
+              ||                                                        \
+                {
+                  wigwam_base_fatal "failed"
+                  exit 1
+                }
+
+              echo
+            fi
+        done
+
+    exit $?
+
+    ;;
+
+  *)
+    packagectl_usage "$@"
+
+    ;;
+esac
+
+exit 0

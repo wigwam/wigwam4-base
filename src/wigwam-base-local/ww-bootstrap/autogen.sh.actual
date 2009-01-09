@@ -1,0 +1,22 @@
+#! /bin/sh
+
+if test -r ext/.wigwam-bootstrap
+  then
+    . ./setup-env
+    packagectl update-packages || exit 1
+  else
+    # prevent wierd errors arising from changing wigwam-bootstrap
+    # from underneath itself while it's being interpreted 
+    # in case of wigwam-base upgrade
+
+    cp -f bin/wigwam-bootstrap bin/wigwam-bootstrap.tmp
+
+       ./bin/wigwam-bootstrap.tmp --from-cvs                    \
+    ||                                                          \
+      {
+        rm -f bin/wigwam-bootstrap.tmp
+        exit 1
+      }
+
+    rm -f bin/wigwam-bootstrap.tmp
+  fi

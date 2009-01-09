@@ -1,0 +1,32 @@
+#! /bin/sh
+
+# just check that the usage for these
+# functions has the function name in it.
+
+#  ww_env_api_reset \
+#  ww_int_clear \
+
+return=0;
+for function in \
+  ww_app_colon \
+  ww_app_delim \
+  ww_has_componant \
+  ww_int \
+  ww_int_app_colon \
+  ww_int_pre_colon \
+  ww_int_set \
+  ww_pre_colon \
+  ww_pre_delim \
+  ww_set \
+  ww_int_load_exports \
+  ; do
+
+  sh -c ". ../functions; $function " |
+    grep "$function" >/dev/null  ||  {
+
+    echo >&2 "$0 usage for $function failed";
+    return=1
+  }
+done
+
+exit $return

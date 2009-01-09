@@ -1,0 +1,34 @@
+#! /bin/sh
+#
+# the first line is for syntax coloring in VIM only
+# you should not execute this file directly
+# only source it from other shell scripts
+
+# backwards compatible variables from wigwam 3
+
+# The location of the system-wide perl, version 5.
+perl5="@PERL@"
+perl="@PERL@"
+
+# The location of the egrep command, which takes a regular expression.
+egrep="@EGREP@"
+
+# The location of the fgrep command, which only takes a literal string.
+fgrep="@FGREP@"
+
+# The location of a bsd-compatible install, according to the configure
+# test code.
+
+install="@INSTALL@"
+
+test_x="ww-test-x"
+test_L="ww_test_L"
+test_d="ww_test_d"
+mkdir_p="ww-mkdir-p"
+sort_numbers_ascending="@wigwam_cv_sort_numbers_ascending@"
+sort_numbers_descending="@wigwam_cv_sort_numbers_descending@"
+md5sum="ww-md5"
+gnumake="@wigwam_cv_gnu_make@"
+df_k_P="@wigwam_cv_df_k_P@"
+
+errcode_sh_macros_failure=100

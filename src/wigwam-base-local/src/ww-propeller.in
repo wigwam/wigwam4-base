@@ -1,0 +1,120 @@
+#! @PERL@
+
+if (!defined($ARGV[1])) {
+  print <<"EOF";
+usage: $0 PROMPT LOGFILE [COMMAND ARGS...]
+
+Prints a 'ww-propeller' to stderr while copying to the logfile.
+
+If a command is given, it is executed and its standard error
+and output are used as input to the ww-propeller.
+In this case, ww-propeller will exit with the status of its subprocess.
+
+You may set WIGWAM_PROPELLER_MODE to one of the following
+values:
+  stderr     Copy standard output and error to the ww-propeller's stderr.
+  ww-propeller  Normal mode of operation.
+  quiet      Output nothing.
+  terse      Output the start and end messages on the same line.
+  linewise   Output the start and end messages on separate lines,
+	     with nothing in between.
+EOF
+  exit(1);
+}
+
+@symbols=("/","-","\\","|");
+$i = 0;
+$prompt = $ARGV[0];
+$logfile = $ARGV[1];
+
+undef $mode;
+
+# the joys of backward compatibility.
+if (defined($ENV{NO_PROPELLER}) && $ENV{NO_PROPELLER}) {
+  $mode = "terse";
+}
+if (defined($ENV{QUIET}) && $ENV{QUIET}) {
+  $mode = "quiet";
+}
+
+# Obey WIGWAM_PROPELLER_MODE.
+if (defined ($ENV{WIGWAM_PROPELLER_MODE})) {
+  $mode = $ENV{WIGWAM_PROPELLER_MODE};
+} 
+
+# During publication, default to `stderr', since
+# default is pretty poorly behaved through wparallelizer.
+if (!defined($mode)
+ && defined ($ENV{WIGWAM_IS_PUBLISHING})
+ && $ENV{WIGWAM_IS_PUBLISHING} eq '1') {
+  $mode = "linewise";
+}
+
+# Default value for $mode.
+$mode = "ww-propeller" unless defined $mode;
+
+shift;
+shift;
+
+open LOG, ">>$logfile" or die "could not open logfile";
+
+my $oldfh = select (LOG); $| = 1; select ($oldfh);
+
+if (defined($ARGV[0]) and $ARGV[0] ne "") {
+  $f = "CMD";
+  $cmd = join (" ", map { my $t = $_; $t =~ s/'/'\\''/; "'$t'" } @ARGV);
+  open CMD, "$cmd 2>&1 |" or die "couldn't run $cmd";
+} else {
+  $f = "STDIN";
+}
+
+if ($mode eq 'ww-propeller') {
+  print STDERR "\r$prompt... ", (' ' x (60 - length ($prompt)));
+  print STDERR "\r$prompt... ", $symbols[$i++];
+} elsif ($mode eq 'stderr') {
+  print STDERR "$prompt: starting.\n";
+} elsif ($mode eq 'terse') {
+  print STDERR "$prompt... ";
+} elsif ($mode eq 'linewise') {
+  print STDERR "$prompt: starting.\n";
+} elsif ($mode eq 'quiet') {
+} else {
+  die "unknown ww-propeller mode: $mode"
+}
+
+while (<$f>) {
+  # you can add \b for a backspace.  i dont like that.
+  if ($mode eq 'ww-propeller') {
+    print STDERR "\r$prompt... " . $symbols[$i++];
+  } elsif ($mode eq 'stderr') {
+    print STDERR "  $_";
+  }
+  print LOG $_ unless $_ eq "\000ww-propeller_nolog\n";
+  $i = 0 if $i > 3;
+}
+
+if ($mode eq 'ww-propeller') {
+  printf(STDERR "\r$prompt.  Done.");
+} elsif ($mode eq 'terse') {
+  print STDERR " done.\n";
+} elsif ($mode eq 'linewise') {
+  print STDERR "\t$prompt: done.\n";
+} elsif ($mode eq 'stderr') {
+  print STDERR "$prompt: done.\n";
+} elsif ($mode eq 'quiet') {
+} else {
+  die "unknown ww-propeller mode: $mode"
+}
+
+if ($f eq 'CMD') {
+  close($f);
+  if ($? == 0) {
+    exit(0);
+  } elsif ($? >= 256) {
+    exit($? >> 8);
+  } else {
+    print STDERR "$0: Killed by signal $?\n";
+    exit(1);
+  }
+}
+

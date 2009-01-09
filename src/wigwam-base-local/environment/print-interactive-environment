@@ -1,0 +1,98 @@
+#! /bin/sh
+
+. "$PLAYPEN_ROOT/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once --exportguard libexec/environment/load-environment
+
+# Figure out what kind of shell the target script will be
+# eval'd by.
+
+print_interactive_shell_spec=""
+print_interactive_zero_hack=""
+
+while test "$#" -gt 0 
+  do
+    case "$1" in
+      --shell)
+        # if ! defined $2
+        print_interactive_shell_spec="$2"
+        test $# -eq 1 || shift
+
+        ;;
+      --shell=*)
+        print_interactive_shell_spec=`echo $1 | sed -e 's/--shell=//'`
+
+        ;;
+      --0-hack)
+        # if ! defined $2
+           test $# -eq 1        \
+        &&                      \
+          {
+            wigwam_base_fatal "$0: missing 0-hack spec" 
+            exit 1
+          }
+        print_interactive_zero_hack="$2"
+        shift
+
+        ;;
+      --0-hack=*)
+        print_interactive_zero_hack=`echo $1 | sed -e 's/--0-hack=//'`
+
+        ;;
+      --pid)
+        # ignore
+        test $# -eq 1 || shift
+
+        ;;
+      --pid=*)
+        # ignore
+        true
+
+        ;;
+      *)
+        wigwam_base_fatal "$0: unexpected option $1" 
+        exit 1
+
+        ;;
+    esac
+    shift
+  done
+
+case "$print_interactive_shell_spec" in
+  *csh)
+    print_interactive_shell_style=csh
+    ;;
+  *sh)
+    print_interactive_shell_style=sh
+    ;;
+  '') 
+    case "$print_interactive_zero_hack" in
+      0 | 1)
+        print_interactive_shell_style=csh
+        ;;
+      [0-9]*0)
+        print_interactive_shell_style=sh
+        ;;
+      '')
+        print_interactive_shell_style=sh
+        ;;
+      *)
+        wigwam_base_fatal "--0-hack got unexpected value"       \
+                          "$print_interactive_zero_hack"
+        exit 1
+      ;;
+    esac
+    ;;
+  *)
+    wigwam_base_warn "print-interactive-environment:"           \
+      "unrecognized shell spec '$print_interactive_shell_spec', assuming sh"
+    print_interactive_shell_style=sh
+    ;;
+esac
+
+for x in $interactive_variables
+  do
+    ww_output_int "$x" "$print_interactive_shell_style"
+  done

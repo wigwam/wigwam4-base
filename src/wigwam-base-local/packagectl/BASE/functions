@@ -1,0 +1,418 @@
+#! /bin/sh
+
+configurable_source --once libexec/archives/functions
+configurable_source --once libexec/environment/functions
+configurable_source --once libexec/functions/configurable-functions
+configurable_source --once libexec/functions/wigwam-base-functions
+
+packagectl_BASE_install_profile_helper () \
+  {
+    # (package, file)
+
+    packagectl_BASE_install_profile_helper_base=`basename "$2"`
+
+    cp -f "$2" "$PLAYPEN_ROOT/ext/etc/profile/$1.profile"
+  }
+
+packagectl_BASE_install_profiles () \
+  {
+    # (package, version)
+
+    ww-mkdir-p "${PLAYPEN_ROOT}/ext/etc/profile" || return 1
+
+    packagectl_BASE_install_profiles_package=$1
+
+      configurable_foreach "packages/$1/profile"                        \
+        packagectl_BASE_install_profile_helper                          \
+          \"\$packagectl_BASE_install_profiles_package\"                \
+          \"\$configurable_foreach_which\"                              \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$1-$2 install: cp of (global) profile scripts failed"
+        return 1
+      }
+
+      configurable_foreach "packages/$1-$2/profile"                     \
+        packagectl_BASE_install_profile_helper                          \
+          \"\$packagectl_BASE_install_profiles_package\"                \
+          \"\$configurable_foreach_which\"                              \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$1-$2 install: cp of profile scripts failed"
+        return 1
+      }
+
+      {
+          packagectl sort "$1" "$2"                                     \
+        | while read package
+            do
+              echo "etc/profile/$package.profile"
+            done
+      } > "$PLAYPEN_ROOT/ext/etc/config-order/700-profile.new"          \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$1-$2 install: update of 700-profile failed"
+        return 1
+      }
+
+    mv -f "$PLAYPEN_ROOT/ext/etc/config-order/700-profile.new"          \
+          "$PLAYPEN_ROOT/ext/etc/config-order/700-profile"
+
+    return 0
+  }
+
+packagectl_BASE_move_files_up () \
+  {
+    packagectl_BASE_move_files_up_dir="$1---temporary-$$"
+
+    mv "$1" "$packagectl_BASE_move_files_up_dir" || return 1
+
+         ls -A "$packagectl_BASE_move_files_up_dir"                     \
+       | while read packagectl_BASE_move_files_up_x
+           do
+             mv -f "$packagectl_BASE_move_files_up_dir/$packagectl_BASE_move_files_up_x" . || return 1
+           done                                                         \
+    || return 1
+
+    rmdir "$packagectl_BASE_move_files_up_dir"
+  }
+
+packagectl_BASE_unpack_tarball ()       \
+  {
+    case "$1" in
+      *.tar.gz | *.tgz)
+        gzip -dc "$1" | tar xf - || return $?
+        ;;
+      *.tar.bz2)
+        bzcat "$1" | tar xf - || return $?
+        ;;
+      *.tar.Z)
+        uncompress -c "$1" | tar xf - || return $?
+        ;;
+      *.tar)
+        tar xf "$1" || return $?
+        ;;
+      *.arj)
+        arj e "$1" || return $?
+        ;;
+      *.zip)
+        unzip "$1" || return $?
+        ;;
+      *)
+        wigwam_base_critical "skipping unknown tarball type $1"
+        return 1
+        ;;
+    esac
+  }
+
+packagectl_BASE_unpack_all_tarballs () \
+  {
+    # unpack global tarballs
+
+        configurable_arg "packages/$1-$2/files"                         \
+          perl -ne                                                      \
+            'print if m%\.(arj|tar|tar\.Z|tar\.gz|tgz|tar\.bz2|zip)%'   \
+      | while read x
+          do
+               configurable_arg "packages/$1-$2/$x"                     \
+                                packagectl_BASE_unpack_tarball          \
+            || return 1
+          done                                                          \
+    || return 1
+
+    # unpack any arch specific tarballs
+
+       configurable_test_r "packages/$1-$2/archs"                       \
+    &&                                                                  \
+      {
+           packagectl_BASE_get_mapped_arch "$1" "$2"                    \
+             packagectl_BASE_unpack_all_tarballs_arch                   \
+        ||                                                              \
+          {
+            wigwam_base_critical "packagectl_BASE_unpack_tarball:"      \
+                                 "arch $WIGWAM_HOST not supported by $1-$2"
+            return 1
+          }
+
+
+           configurable_which                                           \
+             "packages/$1-$2/archfiles.$packagectl_BASE_unpack_all_tarballs_arch" \
+             packagectl_BASE_unpack_all_tarballs_archfiles              \
+        &&                                                              \
+          {
+                perl -ne                                                \
+                  'print 
+                    if m%\.(arj|tar|tar\.Z|tar\.gz|tgz|tar\.bz2|zip)%'  \
+                  "$packagectl_BASE_unpack_all_tarballs_archfiles"      \
+              | while read x
+                  do
+                        configurable_arg "packages/$1-$2/$x"            \
+                                        packagectl_BASE_unpack_tarball  \
+                    || return 1
+                  done                                                  \
+            || return 1
+          }
+      }
+
+    if test `/bin/ls | wc -l` -eq 1
+      then
+        # Ok, so if the archive made a directory for itself,
+        # move that directories contents to the main directory.
+
+        packagectl_BASE_move_files_up "`/bin/ls`" || return 1
+      fi
+
+    return 0
+  }
+
+packagectl_BASE_guess_patch_flags () \
+  {
+    wigwam_base_critical "packagectl_BASE_guess_patch_flags: fix me" 
+
+    echo "-p0"
+  }
+
+packagectl_BASE_apply_patch_stdin () \
+  {
+    if test "x$2" = "x"
+      then
+        patch `packagectl_BASE_guess_patch_flags "$1"`
+      else
+        patch "$2"
+    fi
+  }
+
+packagectl_BASE_apply_patch () \
+  {
+    case "$1" in
+      *.patch.gz)
+        gzip -dc "$1" | packagectl_BASE_apply_patch_stdin "$@"
+
+        ;;
+
+      *.patch.bz2)
+        bzcat "$1" | packagectl_BASE_apply_patch_stdin "$@"
+
+        ;;
+      *.patch)
+        cat "$1" | packagectl_BASE_apply_patch_stdin "$@"
+
+        ;;
+
+      *)
+        wigwam_base_critical "unknown patch type $1" 
+        return 1
+
+        ;;
+    esac
+
+    return $?
+  }
+
+packagectl_BASE_apply_all_patches () \
+  {
+    # crappy backwards compatibility ... support prepatch/postpatch w/o dash
+
+    if configurable_test_r "packages/$1-$2/prepatch"
+      then
+        configurable_run "packages/$1-$2/prepatch" || return 1
+      fi
+
+    if configurable_test_r "packages/$1-$2/pre-patch"
+      then
+        configurable_run "packages/$1-$2/pre-patch" || return 1
+      fi
+
+        configurable_arg "packages/$1-$2/files"                         \
+          perl -ne                                                      \
+            'print if    m%\.(patch|patch\.gz|patch\.bz2)$%
+                      || m%^patch$%'                                    \
+      | while read x
+          do
+               configurable_arg "packages/$1-$2/$x"                     \
+                                packagectl_BASE_apply_patch             \
+            || return 1
+          done                                                          \
+    || return 1
+
+    # more bending over backwards compatibility ... arch specific patch files
+
+       configurable_test_r "packages/$1-$2/archs"                       \
+    &&                                                                  \
+      {
+           packagectl_BASE_get_mapped_arch "$1" "$2"                    \
+             packagectl_BASE_apply_all_patches_arch                     \
+        ||                                                              \
+          {
+            wigwam_base_critical "packagectl_BASE_unpack_tarball:"      \
+                                 "arch $WIGWAM_HOST not supported by $1-$2"
+            return 1
+          }
+
+           configurable_which                                           \
+             "packages/$1-$2/archfiles.$packagectl_BASE_apply_all_patches_arch" \
+             packagectl_BASE_apply_all_patches_archfiles                \
+        &&                                                              \
+          {
+                perl -ne                                                \
+                  'print if    m%\.(patch|patch\.gz|patch\.bz2)$%
+                            || m%^patch$%'                              \
+                     "$packagectl_BASE_apply_all_patches_archfiles"     \
+              | while read x
+                  do
+                        configurable_arg "packages/$1-$2/$x"            \
+                                        packagectl_BASE_apply_patch     \
+                    || return 1
+                  done                                                  \
+            || return 1
+          }
+      }
+
+    if configurable_test_r "packages/$1-$2/postpatch"
+      then
+        configurable_run "packages/$1-$2/postpatch" || return 1
+      fi
+
+    if configurable_test_r "packages/$1-$2/post-patch"
+      then
+        configurable_run "packages/$1-$2/post-patch" || return 1
+      fi
+
+    return 0
+  }
+
+packagectl_BASE_get_mapped_arch () \
+  {
+       configurable_which "packages/$1-$2/archs"                        \
+                          packagectl_BASE_get_mapped_arch_file          \
+    || return 1
+
+       perl -e '$arch = quotemeta ($ENV{"WIGWAM_HOST"});
+                exit ! scalar grep { m%^$arch\s+% } <>;'                \
+       "$packagectl_BASE_get_mapped_arch_file"                          \
+    || return 1
+
+    packagectl_BASE_get_mapped_arch_arch=`
+      perl -le '$arch = quotemeta ($ENV{"WIGWAM_HOST"});
+                while (<>) { chomp; 
+                             if (m%^$arch\s+(.*)%) { 
+                             print $1; exit 0 } }; exit 1'              \
+               "$packagectl_BASE_get_mapped_arch_file"`
+
+    eval $3="\$packagectl_BASE_get_mapped_arch_arch"
+
+    return 0
+  }
+ 
+packagectl_BASE_get_package_archive () \
+  {
+    # (package, version)
+
+    perl -MWigwam::DB -e                                                \
+      "\$archives = Wigwam::DB::wigdbmopen 
+                    \"$PLAYPEN_ROOT/ext/package-archives/archives\", 
+                    0666;
+       print \$archives->{\"$1 $2\"}"
+
+    return $?
+  }
+
+packagectl_BASE_compute_installed_files_pre () \
+  {
+    # (package, version)
+
+      (
+        cd "$PLAYPEN_ROOT/ext"
+          configurable_run "libexec/packagectl/image"                   \
+            "."                                                         \
+            "./build"                                                   \
+            "./package-archives"                                        \
+            "./packages"                                                \
+            "./src"                                                     \
+            "./private"                                                 \
+        > "./build/logs/$1-$2/ext_image.pre" 
+      )                                                                 \
+    || return 1
+
+    return 0
+  }
+
+packagectl_BASE_compute_installed_files_post () \
+  {
+    # (package, version)
+
+      (
+        cd "$PLAYPEN_ROOT/ext"
+          configurable_run "libexec/packagectl/image"                   \
+            "."                                                         \
+            "./build"                                                   \
+            "./package-archives"                                        \
+            "./packages"                                                \
+            "./src"                                                     \
+            "./private"                                                 \
+        > "./build/logs/$1-$2/ext_image.post"
+      )                                                                 \
+    || return 1
+    
+       configurable_run "libexec/packagectl/compute_installed_files"    \
+         "${PLAYPEN_ROOT}/ext/build/logs/$1-$2/ext_image.pre"           \
+         "${PLAYPEN_ROOT}/ext/build/logs/$1-$2/ext_image.post"          \
+         > "${PLAYPEN_ROOT}/ext/packages/$1-$2/installed_files.new"     \
+    || return 1
+
+    rm -f "${PLAYPEN_ROOT}/ext/packages/$1-$2/installed_files"
+    mv "${PLAYPEN_ROOT}/ext/packages/$1-$2/installed_files.new"         \
+       "${PLAYPEN_ROOT}/ext/packages/$1-$2/installed_files"
+
+    rm -f "${PLAYPEN_ROOT}/ext/build/logs/$1-$2/ext_image.pre"
+    rm -f "${PLAYPEN_ROOT}/ext/build/logs/$1-$2/ext_image.post"
+
+    return 0
+  }
+
+packagectl_BASE_parse_args () \
+  {
+    action=$1
+    shift
+       wigwam_base_assert_nonempty "packagectl_BASE_parse_args" "$action"   \
+    || return 1
+    type=$1
+    shift
+       wigwam_base_assert_nonempty "packagectl_BASE_parse_args" "$type"     \
+    || return 1
+
+    package=$1
+    shift
+       wigwam_base_assert_nonempty "packagectl_BASE_parse_args" "$package"  \
+    || return 1
+
+    version=$1
+    shift
+       wigwam_base_assert_nonempty "packagectl_BASE_parse_args" "$version"  \
+    || return 1
+
+    force=0
+
+    while test $# -gt 1
+      do
+        case "$1" in
+          --force)
+            force=1
+            shift;
+
+            ;;
+
+          --)
+            shift;
+            break;
+
+            ;;
+          *)
+            break;
+            ;;
+
+        esac
+      done
+
+    return 0
+  }

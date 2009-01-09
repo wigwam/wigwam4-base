@@ -1,0 +1,45 @@
+#! @PERL@
+
+use strict;
+
+use Wigwam::DB;
+
+my $dependencies_dbm = 
+  shift @ARGV or die "$0: missing dependencies dbm argument";
+
+my $dependencies = Wigwam::DB::wigdbmopen $dependencies_dbm, 0666 
+  or die "$0: can't open $dependencies_dbm";
+
+my %seen_package_version;
+
+while (defined ($_ = <>))
+  {
+    chomp;
+    my ($package, $version, $depends) = split /\000/, $_;
+
+    next unless length "$package";
+    next unless $package =~ /\S/;
+    next unless length "$version";
+    next unless $version =~ /\S/;
+    next unless length "$depends";
+    next unless $depends =~ /\S/;
+
+    if (   $dependencies->{"$package\000$version"}
+        && exists $seen_package_version{"$package\000$version"})
+      {
+        my %deps = 
+          map { $_ => 1 } split /\000/, $dependencies->{"$package\000$version"};
+
+        $deps{$depends} = 1;
+
+        $dependencies->{"$package\000$version"} = join ("\000", keys %deps);
+      }
+    else
+      {
+        $dependencies->{"$package\000$version"} = $depends;
+      }
+
+    $seen_package_version{"$package\000$version"} = 1;
+  }
+
+exit 0;

@@ -1,0 +1,7 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once --exportguard libexec/environment/load-environment
+
+eval exec "$@"

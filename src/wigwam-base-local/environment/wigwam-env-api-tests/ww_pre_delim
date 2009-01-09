@@ -1,0 +1,25 @@
+#! /bin/sh
+
+. ../functions
+
+. ./test_functions
+
+foo=""
+ww_pre_delim foo foo :
+compare "$foo" "foo"
+
+ww_pre_delim foo bar :
+compare "$foo" "bar:foo"
+
+ww_pre_delim foo foo :
+compare "$foo" "bar:foo"
+
+ww_pre_delim foo foo:bar:baz :
+compare "$foo" "baz:bar:foo"
+
+foo=""
+ww_pre_delim foo "taco plex dude" ' '
+compare "$foo" "taco plex dude"
+
+ww_pre_delim foo "taco bar dude" ' '
+compare "$foo" "bar taco plex dude"

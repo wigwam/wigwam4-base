@@ -1,0 +1,15 @@
+#! /bin/sh
+
+. ../functions
+
+. ./test_functions
+
+foo=""
+ww_app_colon foo bar:blah
+compare  $foo "bar:blah" 
+
+ww_app_colon foo blah
+compare "$foo" "bar:blah" 
+
+ww_app_colon foo blah:de:bar:dah
+compare "$foo" "bar:blah:de:dah" 

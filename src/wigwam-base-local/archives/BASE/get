@@ -1,0 +1,7 @@
+#! /bin/sh
+
+# (type archive resource saveto)
+
+ww-get-url "$2/$3" "$4"
+
+exit $?

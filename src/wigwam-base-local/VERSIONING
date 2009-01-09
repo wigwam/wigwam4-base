@@ -1,0 +1,35 @@
+
+Wigwam Version Number Policy:
+
+This policy applies to wigwam versions 3.2 or greater. 
+
+wigwam versions are of the form: x.y.z[.b]
+
+x = the major version number:
+
+    major changes, including philosophy changes,
+    upgrades across major versions can require changes
+    to the project, and other manual intervention
+    to publish the upgrade. 
+
+y = the minor version number:
+
+    a minor version change means new features, or re-factoring.
+    it will not require any changes to the project. However
+    special instructions may be required to publish  the
+    upgrade, such as an upgrade to an intermediate version, 
+    or a fresh publish.
+
+z = the patch level:
+
+    bug fixes only.
+    no project changes will be required to upgrade across a 
+    patch level, and no special actions should be required 
+    to publish the upgrade. 
+
+    this may be ommited, if the number is zero.   ie 3.1 or 4.2
+
+b = the development / beta versions,
+
+    changes here may be new features, or bug fixes targeted
+    for the next patch level, or minor release. 

@@ -1,0 +1,9 @@
+#! /bin/sh
+
+# (type archive resource saveto)
+
+fullpath=`perl -e '$ARGV[0] =~ s#^(local:)##; print $ARGV[0];' "$2"`
+
+cp -f "${PLAYPEN_ROOT}/$fullpath/$3" "$4"
+
+exit $?

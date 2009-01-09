@@ -1,0 +1,47 @@
+/* wigwam-config.h.in.  Generated automatically from configure.in by autoheader.  */
+
+/* The number of bytes in a char.  */
+#undef SIZEOF_CHAR
+
+/* The number of bytes in a int.  */
+#undef SIZEOF_INT
+
+/* The number of bytes in a long.  */
+#undef SIZEOF_LONG
+
+/* The number of bytes in a long long.  */
+#undef SIZEOF_LONG_LONG
+
+/* The number of bytes in a short.  */
+#undef SIZEOF_SHORT
+
+/* Name of package */
+#undef PACKAGE
+
+/* Version number of package */
+#undef VERSION
+
+/* 8 bit integer type */
+#undef wint8
+
+/* 8 bit unsigned integer type */
+#undef wuint8
+
+/* 16 bit integer type */
+#undef wint16
+
+/* 16 bit unsigned integer type */
+#undef wuint16
+
+/* 32 bit integer type */
+#undef wint32
+
+/* 32 bit unsigned integer type */
+#undef wuint32
+
+/* 64 bit integer type */
+#undef wint64
+
+/* 64 bit unsigned integer type */
+#undef wuint64
+

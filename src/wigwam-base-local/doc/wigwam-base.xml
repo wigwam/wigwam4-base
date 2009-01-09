@@ -1,0 +1,724 @@
+<?xml version="1.0" encoding='ISO-8859-1'?>
+<!DOCTYPE book PUBLIC "-//OASIS//DTD DocBook XML V4.2//EN"
+                      "http://www.oasis-open.org/docbook/xml/4.2/docbookx.dtd"
+
+[
+ <!ENTITY version "0.01">
+ <!ENTITY packagectl SYSTEM "packagectl.xml">
+ <!ENTITY current_release_url SYSTEM "current-release-url.xml">
+ <!ENTITY wigwam_bootstrap_url SYSTEM "wigwam-bootstrap-url.xml">
+ <!ENTITY ext '<filename class="directory">ext</filename>'>
+ <!ENTITY etcprojectpackages '<filename>etc/project-packages</filename>'>
+]>
+
+<!-- 
+Comments just like html
+-->
+
+<book>
+  <bookinfo>
+    <title>Wigwam-base 4.0 Documentation</title>
+    <author>
+      <firstname>Helmut</firstname>
+      <surname>Geschwollen</surname>
+    </author>
+    <copyright><year>2003</year><holder>Helmut Geschwollen</holder></copyright>
+    <legalnotice>
+      <para>Released under the GNU Free Documentation License v1.2.</para>
+    </legalnotice>
+    <abstract>
+      <para>This document describes how to use wigwam-base version 4.0.</para>
+    </abstract>
+  </bookinfo>
+
+  <chapter>
+    <title>Introduction</title> 
+    <para>
+      The introduction is always written last.
+    </para>
+    
+    <section>
+      <title>Quick start</title>
+      <para>
+        For the impatient, here's how to quickly get a brand-new project,
+        named <productname>flass</productname>, up and running with wigwam.
+      </para>
+
+      <section>
+        <title>Bootstrapping a project</title>
+
+        <para>
+          For a brand-new project, a copy of &wigwam_bootstrap_url; is
+          required.  Change directories to where you want the project
+          to be located, and then invoke wigwam-bootstrap with the
+          --project argument.
+
+          <screen>
+% wigwam-bootstrap --project=flass
+Please bear with me as I bootstrap: flass
+I'll be using the following package archives:
+It should just take a moment or two and should any
+problems arise errors will be logged to: /tmp/wigwam-bootstrap-flass-18504.log
+                                                                                
+Cool, that went well, now I'll update-packages, as before, if something
+goes wrong, look in the log file.
+I did it. You're all set.
+          </screen>
+
+          At this point, a subdirectory named 
+          <filename class="directory">flass</filename> exists, containing
+          a skeletal wigwam directory layout.  Change directory into
+          the flass subdirectory and source setup-env.
+
+          <screen>
+% cd flass
+% . ./setup-env
+          </screen>
+
+          Once setup-env has been sourced, wigwam-base commands like
+          <xref linkend="packagectl"></xref> are available.
+        </para>
+
+        <tip>
+          <title><filename>setup-env</filename></title>
+          <para>
+            If your shell can't find wigwam executables installed in your
+            playpen, e.g. <xref linkend="packagectl"></xref>,
+            then you've probably forgot to source 
+            <filename>setup-env</filename>.
+          </para>
+        </tip>
+
+        <tip>
+          <title>Relative filenames</title>
+          <para>
+            Throughout the wigwam documentation, filenames are specified
+            relative to <varname>PLAYPEN_ROOT</varname>, which is
+            the base directory of the wigwam instance; in this case,
+            <varname>PLAYPEN_ROOT</varname> is the full path of the
+            <filename class="directory">flass</filename> directory.
+            The <varname>PLAYPEN_ROOT</varname> environment variable is
+            set by sourcing <filename>setup-env</filename>.
+          </para>
+        </tip>
+      </section>
+
+      <section>
+        <title>Installing packages</title>
+        <para>
+          You can install packages into your new project with 
+          <xref linkend="packagectl"></xref>, e.g., to install 
+          a static webserver:
+
+          <screen>
+% packagectl install service_static_apache
+wigwam-base-4.0.2-1 post-installing.  Done.
+mime-types-0.1-3 post-installing.  Done.
+expat-1.95.6-1 post-installing.  Done.
+apache-1.3.29-1 post-installing.  Done.
+servicectl-1.0-1 post-installing.  Done.
+service_static_apache-0.2-3 post-installing.  Done.
+          </screen>
+        </para>
+
+        <tip id="buildlogs">
+          <title>Build logs</title>
+          <para>
+            If a package <productname>X</productname> fails to install,
+            you can check the error logs in 
+            <filename class="directory">ext/build/logs/X</filename>
+            to determine what went wrong.
+          </para>
+        </tip>
+
+        <para>
+          The list of project packages, 
+          <filename>etc/project-packages</filename>, now contains 
+          the list of project packages and versions that were installed.
+
+          <screen>
+% cat etc/project-packages
+wigwam-base 4.0.2-1
+mime-types 0.1-3
+expat 1.95.6-1
+apache 1.3.29-1
+servicectl 1.0.1-1
+service_static_apache 0.2-3
+          </screen>
+
+          You can learn more about package management in 
+          <xref linkend="packagemanagement"></xref>.
+        </para>
+      </section>
+
+      <section>
+        <title>Starting services</title>
+        <para>
+          If you've installed any service packages, you can manipulate
+          the services they provide via 
+          <xref linkend="servicectl"></xref>.
+
+          <screen>
+% servicectl start static_apache
+Fatal:  check-environment: service static_apache required environment variable OUTSIDE_HOSTNAME not set
+Fatal:  static_apache   0.2-3 start: failed
+          </screen>
+
+          This indicates that some environment variables which are
+          required to run the <literal>static_apache</literal> service
+          have not been defined.  In <xref linkend="envmanage"></xref>,
+          environment management is discussed in detail.  For now
+          use the editor of champions, cat, to define the requisite
+          variables in <filename>etc/project.conf</filename>.
+
+          <screen>
+% cat > etc/project.conf
+OUTSIDE_HOSTNAME=${OUTSIDE_HOSTNAME="foo"}
+OUTSIDE_PORT=${OUTSIDE_PORT="6969"}
+STATIC_HTTPD_PORT=${STATIC_HTTPD_PORT="6969"}
+SERVER_ADMIN=${SERVER_ADMIN="f@z.com"}
+LOG_DIR=${LOG_DIR="$LOCAL_VAR"}
+% servicectl start
+Info: static_apache ping: checking pid file ... not running.
+Info:  static_apache start: success.
+% telnet localhost 6969
+Trying 127.0.0.1...
+Connected to localhost.
+Escape character is '^]'.
+HEAD / HTTP/1.0
+                                                                                
+HTTP/1.1 404 Not Found
+Date: Fri, 26 Dec 2003 19:15:24 GMT
+Server: Apache/1.3.29 (Unix)
+Connection: close
+Content-Type: text/html; charset=iso-8859-1
+
+Connection closed by foreign host.
+          </screen>
+
+          Congratulations.  You now have a webserver running, albeit,
+          without content.
+        </para>
+
+        <tip>
+          <title>Configuration templates and overrides</title>
+          <para>
+            The static apache service, like many services, comes
+            with a configuration template, in this case stored in
+            <filename>ext/etc/static_apache.conf.in</filename>.
+            This template sets the document root for the server
+            to <filename class="directory">www/htdocs</filename>,
+            which currently does not exist.  You can create this
+            directory to serve up content, if you wish.  Alternatively,
+            you can override this file by editing your own copy in
+            <filename>etc/static_apache.conf.in</filename>, e.g.,
+            you could change the document root to point to a directory
+            that exists (you must restart the service for this change
+            to take effect).  See <xref linkend="overrides"></xref>
+            for more information on the overrides system.
+          </para>
+        </tip>
+      </section>
+
+      <section>
+        <title>Revision control</title>
+        <para>
+          If you plan on using this project for more than
+          just experimentation, you should import the project
+          into your revision control repository.  The &ext;
+          directory and the <filename>setup-env</filename> and
+          <filename>unsetup-env</filename> files should not be checked
+          into revision control.  If you're using CVS, appropriate
+          .cvsignore files have been created for you by wigwam-bootstrap,
+          so a direct <command>cvs import</command> will do the right
+          thing.
+
+          <screen>
+% cvs import -m 'initial import' flass start import
+N flass/.cvsignore
+N flass/autogen.sh
+I flass/setup-env
+I flass/unsetup-env
+I flass/ext
+cvs import: Importing /tmp/flass-cvs/flass/etc
+N flass/etc/.cvsignore
+N flass/etc/project-name
+N flass/etc/project-packages
+N flass/etc/project.conf
+cvs import: Importing /tmp/flass-cvs/flass/bin
+N flass/bin/.cvsignore
+N flass/bin/wigwam-bootstrap
+          </screen>
+
+          Now check out a fresh copy of the project and continue working.
+          <screen>
+% servicectl stop
+Info: static_apache ping: checking pid file ... running.
+Info: stopping static_apache ... success.
+% cd ..
+% mv flass flass.orig
+% cvs co flass
+cvs checkout: Updating flass
+U flass/.cvsignore
+U flass/autogen.sh
+cvs checkout: Updating flass/bin
+U flass/bin/.cvsignore
+U flass/bin/wigwam-bootstrap
+cvs checkout: Updating flass/etc
+U flass/etc/.cvsignore
+U flass/etc/project-name
+U flass/etc/project-packages
+U flass/etc/project.conf
+% cd flass
+% ./autogen.sh
+cat: etc/package-archives: No such file or directory
+Please bear with me as I bootstrap: flass
+I'll be using the following package archives:
+It should just take a moment or two and should any
+problems arise errors will be logged to: /tmp/wigwam-bootstrap-flass-20755.log
+                                                                                
+Cool, that went well, now I'll update-packages, as before, if something
+goes wrong, look in the log file.
+wigwam-base-4.0.2-1 post-installing.  Done.
+mime-types-0.1-3 post-installing.  Done.
+expat-1.95.6-1 post-installing.  Done.
+apache-1.3.29-1 post-installing.  Done.
+servicectl-1.0.1-1 post-installing.  Done.
+service_static_apache-0.2-3 post-installing.  Done.
+I did it. You're all set.
+% servicectl start
+Info: static_apache ping: checking pid file ... not running.
+Info:  static_apache start: success.
+          </screen>
+        </para>
+
+        <tip>
+          <title><filename>autogen.sh</filename></title>
+          <para>
+            Anytime you check out a fresh copy of a wigwam
+            project from revision control, you must run the
+            <filename>autogen.sh</filename> script from the root directory
+            of the checkout to initialize the project.
+          </para>
+        </tip>
+      </section>
+
+      <section>
+        <title>In-project source code</title>
+        <para>
+          You've installed packaged software into your project.  Most projects
+          will additionally include custom project-specific software.   Let's
+          create a hello world application as in-project source code.
+
+          <screen>
+% mkdir src
+% cd src
+% mkdir hello-world-local
+% cd hello-world-local
+% cat > hello-world.c
+int main (void) { write (1, "hello world\n", 12); exit (0); }
+% cat > Makefile
+all: hello-world
+
+install: hello-world
+        cp hello-world ${PLAYPEN_ROOT}/ext/bin
+% cd $PLAYPEN_ROOT
+% mkdir packages
+% cd packages
+% mkdir hello-world-local
+% cd hello-world-local
+% cat > options
+configure_style="none"
+% cat > type
+make
+% packagectl install hello-world
+hello-world-local post-installing.  Done.
+% hello-world
+hello world
+% packagectl uninstall hello-world
+hello-world-local uninstalling.  Done.
+% hello-world
+zsh: command not found: hello-world
+          </screen>
+
+          If the package doesn't install for you, 
+         <link linkend="buildlogs">check the error logs for hints</link>.
+         A likely culprit is not correctly inserting the hard tab 
+         into the Makefile line for the install target.
+        </para>
+
+        <para>
+          In-project source code has the special version number 
+          <literal>local</literal>.  Local packages are treated 
+          in depth in <xref linkend="localpackages"></xref>.  For now,
+          you should know that packages with the local version
+          number are managed differently than packages with ordinary
+          version numbers, because the underlying software of a local
+          package can change without the version number changing.  In
+          particular, installation of a local package does not result
+          in an entry in <filename>etc/project-packages</filename>.
+          If you want your local package to be automatically installed
+          whenever <command>packagectl update-packages</command> is
+          run, you should place the name of your package in the
+          <filename>etc/in-project-packages</filename> file.  This
+          is especially important if you want local packages to be
+          automatically re-installed upon publication with 
+          <xref linkend="pubtool"></xref>.
+
+          <screen>
+% cd $PLAYPEN_ROOT
+% cat > etc/in-project-packages
+hello-world
+% packagectl update-packages
+hello-world-local post-installing.  Done.
+          </screen>
+        </para>
+
+        <tip>
+          <title>Special files</title>
+          <para>
+            Modification of special wigwam files, such as 
+            <filename>etc/in-project-packages</filename>,
+            will not affect other instances of the project unless
+            changes are checked into revision control.
+          </para>
+        </tip>
+      </section>
+      <section>
+        <title>Next steps</title>
+        <para>
+          The development of a wigwam project proceeds along the
+          above lines, with in-project source code being written for
+          the task at hand, and packages being installed into the
+          project to support the in-project source code as necessary.
+          <xref linkend="inprojectservices"></xref>, if any, are defined
+          in an analogous way to other local packages.
+        </para>
+
+        <para>
+          If clustered deployment of the project is desired, the 
+          <xref linkend="pubtool"></xref> package can be installed.
+        </para>
+      </section>
+    </section>
+  </chapter>
+
+  <chapter id="packagemanagement">
+    <title>Package management</title> 
+    <para>
+      Reuse is a good software engineering practice.  Not only is the
+      productivity of the engineer increased by leveraging other's work,
+      but reliability is also increased, because defects in reused
+      software are identified and repaired collectively.
+    </para>
+
+    <para>
+      However, reuse introduces challenges for quality assurance.
+      When a piece of software is tested for defects, a certain set of
+      versions of reused code is present; when the software is actually
+      deployed, the set of versions of reused code present in production,
+      if distinct from that during testing, can introduce subtle defects
+      which are difficult to identify and repair.  In some cases, the
+      project software only passed quality assurance testing because of
+      a beneficial interaction between a defect in the project code and
+      a defect in reused code; thus, repairing the defect in the reused
+      code can actually introduce a defect into the project as a whole.
+    </para>
+
+    <para>
+      The core of the wigwam strategy for obtaining reliable, defect-free
+      software projects is to increase the scope of revision control
+      beyond just the novel code written for the project.  With respect
+      to controlling the versions of reused code with interacts with the
+      project, wigwam provides a localized packaging system for managing
+      the twin goals of versioning and reuse.
+    </para>
+
+    <para>
+      The packaging system works via interaction with an instance of
+      the wigwam project, denoted the <literal>playpen</literal>,
+      and a repository of labelled versions of reusable software,
+      denoted the <literal>package-archive</literal>.  It begins with
+      a developer requesting via <xref linkend="packagectl"></xref>
+      that a particular package be installed into their playpen,
+      as described in <xref linkend="installingpackages"></xref>.  If the
+      request can be fufilled in a manner consistent with the other
+      packages currently installed in the playpen, then the package
+      is downloaded from the package-archive and installed into the
+      local playpen.  The resulting set of project packages are then
+      recorded in the <filename>etc/project-packages</filename> file.
+      The <filename>etc/project-packages</filename> file, along with
+      other special wigwam files, are themselves managed by revision
+      control along with the novel code which constitutes the project;
+      this allows for the set of versions of reused software to included
+      in any snapshot of the source code used for testing.
+    </para>
+
+    <para>
+      In addition, the packaging system is how novel in-project source
+      code is built and installed into the playpen.  The only difference
+      between reused packages obtained from the package-archive,
+      and packages derived from in-project source code, is that <xref
+      linkend="localpackages"></xref> are assumed versioned via a
+      revision control system and are therefore all assigned the special
+      version <literal>local</literal>.
+    </para>
+
+    <para>
+      The package-archive is itself a wigwam project, which happens
+      to contain package metadata used by other projects.  Managing a
+      package-archive is not very different than managing any other
+      wigwam project, but there are certain conventions regarding the
+      package metadata which must be followed to ensure the integrity
+      of package version numbers.  Making packages and administrating
+      package-archives is the subject of <xref linkend="packagearchive"></xref>.
+    </para>
+
+    <section id="installingpackages">
+      <title>Managing packages with packagectl</title>
+      <section>
+        <title>Overview</title>
+        <para>
+          Package management refers to the operations that change the 
+          set of software that is installed into the wigwam project.
+          There are two distinct parts of package management, both 
+          of which are handled by <xref linkend="packagectl"></xref>.
+
+          <orderedlist numeration="arabic">
+            <listitem>
+              <para>
+                The actual installation or removal of software from the
+                local instance of the wigwam project.  This software is
+                installed in and removed from the &ext; directory.  &ext;
+                is deliberately excluded from revision control; thus,
+                installed software is <emphasis>not</emphasis> checked 
+                into revision control.
+              </para>
+            </listitem>
+            <listitem>
+              <para>
+                The updating of &etcprojectpackages; containing the
+                list of installed packages and associated versions.
+                &etcprojectpackages; is under revision control, so that
+                changes to the set of installed packages can be tracked
+                and tested.
+              </para>
+            </listitem>
+          </orderedlist>
+        </para>
+        <para>
+          In normal usage, a developer requests packages to be installed,
+          upgraded, or uninstalled from the project via the appropriate
+          <xref linkend="packagectl"></xref> commands.  Success results
+          in both changes to &ext; and &etcprojectpackages;; the 
+          developer then commits &etcprojectpackages; into revision control.
+        </para>
+        <note>
+          <title>&etcprojectpackages;</title>
+          <para>
+            Local changes to &etcprojectpackages; resulting from 
+            <xref linkend="packagectl"></xref> are not automatically
+            committed into revision control.
+          </para>
+        </note>
+        <para>
+          Because what is checked into revision control is a
+          <emphasis>list</emphasis> of what should be installed, instead
+          of what is actually installed, it is possible that the two
+          do not agree.  This most commonly occurs when updating the
+          project via revision control, and receiving updates to the set
+          of installed packages committed by another developer working
+          on the project.
+        </para>
+      </section>
+    </section>
+
+    <section id="localpackages" xreflabel="in-project packages">
+      <title>In-project source code</title>
+      <para>
+        Yo.
+      </para>
+    </section>
+  </chapter>
+
+  <chapter id="envmanage">
+    <title>Environment management</title> 
+    <para>
+      The environment.  Yeah!
+    </para>
+  </chapter>
+
+  <chapter id="overrides">
+    <title>The overrides system</title>
+    <para>
+      It's cool!
+    </para>
+  </chapter>
+
+  <chapter id="packagearchive">
+    <title>Administrating a package archive</title> 
+    <para>
+      Package archives.  Yipee!
+    </para>
+
+    <section>
+      <title>Making wigwam packages</title>
+      <para>
+        Yo.
+      </para>
+      <important>
+        <title>Proper use of &ext;</title>
+        <para>
+          wigwam-base uses the &ext; directory to stored installed package
+          and associated metadata.  Importantly, at any time wigwam-base
+          can completely regenerate the entire contents of <filename
+          class="directory">ext</filename> using the state stored outside
+          &ext;, e.g., <filename>etc/project-packages</filename>.
+          Thus a playpen can be reset by removing the <filename
+          class="directory">ext</filename> directory and re-running
+          <filename>autogen.sh</filename>.
+        </para>
+        <para>
+          To preserve the <literal>rm -rf ext; ./autogen.sh</literal> idiom,
+          packages should not store any data in &ext; which cannot be 
+          regenerated using state stored outside &ext;.
+        </para>
+      </important>
+    </section>
+  </chapter>
+
+  <appendix>
+    <title>Man pages</title>
+    &packagectl;
+  </appendix>
+
+  <appendix>
+    <title>FAQ</title>
+    <qandaset>
+
+      <qandadiv id="servicectl" xreflabel="servicectl">
+        <title>servicectl</title>
+        <qandaentry>
+          <question>
+            <para>
+              What is <command>servicectl</command>?
+            </para>
+          </question>
+          <answer>
+            <para>
+              <command>servicectl</command> is the wigwam interface to
+              managing services.  In wigwam 3, servicectl was part of
+              wigwam-base, but now, it is packaged and documented separately.
+            </para>
+          </answer>
+        </qandaentry>
+        <qandaentry id="service" xreflabel="service">
+          <question>
+            <para>
+              What is a service?
+            </para>
+          </question>
+          <answer>
+            <para>
+              Most generically speaking, a service is something that is
+              managed by <command>servicectl</command>.  Typically this
+              is a network daemon which provides a persistent service,
+              e.g., apache or mysql.
+            </para>
+          </answer>
+        </qandaentry>
+        <qandaentry id="inprojectservices" xreflabel="In-project services">
+          <question>
+            <para>
+              How do I make my in-project source code into a service?
+            </para>
+          </question>
+          <answer>
+            <para>
+              The preferred method is to make an in-project package whose
+              package type is <literal>service</literal>.  The service
+              package type is provided by the <command>servicectl</command>
+              package and is documented there.
+            </para>
+          </answer>
+        </qandaentry>
+        <qandaentry>
+          <question>
+            <para>
+              Where is the documentation for <command>servicectl</command>?
+            </para>
+          </question>
+          <answer>
+            <para>
+              I don't know yet.
+            </para>
+          </answer>
+        </qandaentry>
+      </qandadiv>
+
+      <qandadiv id="pubtool" xreflabel="pubtool">
+        <title>pubtool</title>
+        <qandaentry>
+          <question>
+            <para>
+              What is <command>pubtool</command>?
+            </para>
+          </question>
+          <answer>
+            <para>
+              Pubtool is a tool for coordinating deployment of a wigwam 
+              project across a cluster of machines.  In wigwam 3, pubtool
+              was packaged with wigwam-base, but now, it is packaged and
+              documented separately.
+            </para>
+          </answer>
+        </qandaentry>
+        <qandaentry>
+          <question>
+            <para>
+              Where is the documentation for <command>pubtool</command>?
+            </para>
+          </question>
+          <answer>
+            <para>
+              I don't know yet.
+            </para>
+          </answer>
+        </qandaentry>
+      </qandadiv>
+
+      <qandadiv id="wigwam3_differences" xreflabel="wigwam3 differences">
+        <title>wigwam3 differences</title>
+        <qandaentry>
+          <question>
+            <para>
+              Downloaded package data is no longer in 
+              <filename class="directory">ext/packages/</filename>
+              and my favorite package <varname>X</varname> 
+              doesn't install correctly in wigwam 4 ?!
+            </para>
+          </question>
+          <answer>
+            <para>
+              This is actually a bug in the package.  Packages should 
+              not assume their package data is downloaded into a
+              specific directory; instead, the environment variable
+              <varname>EXT_PACKAGEDIR</varname> is used both in wigwam 3
+              and in wigwam 4 to indicate where package data can be found.
+              You should fix the package to refer to 
+              <varname>EXT_PACKAGEDIR</varname> instead of
+              <filename class="directory">ext/packages/</filename>.
+            </para>
+          </answer>
+        </qandaentry>
+      </qandadiv>
+    </qandaset>
+
+  </appendix>
+
+  <appendix>
+    <title>References</title>
+    <para>Some Hoity Toity Person</para>
+  </appendix>
+
+</book>

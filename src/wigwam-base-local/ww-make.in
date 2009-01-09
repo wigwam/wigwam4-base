@@ -1,0 +1,3 @@
+#! /bin/sh
+
+exec @wigwam_cv_gnu_make@ "$@"

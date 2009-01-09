@@ -1,0 +1,35 @@
+#! @PERL@
+
+use strict;
+
+use Wigwam::DB;
+
+my $provides_dbm = shift @ARGV or die "$0: missing provides dbm argument";
+
+my $providesdb = Wigwam::DB::wigdbmopen $provides_dbm, 0666 
+  or die "$0: can't open $provides_dbm";
+
+my %seen_package_version;
+
+while (defined ($_ = <>))
+  {
+    chomp;
+    my ($package, $version, $provides) = split /\000/, $_;
+
+    if (   $providesdb->{"$package\000$version"}
+        && exists $seen_package_version{"$package\000$version"})
+      {
+        my %deps = 
+          map { $_ => 1 } split /\000/, $providesdb->{"$package\000$version"};
+
+        $deps{$provides} = 1;
+
+        $providesdb->{"$package\000$version"} = join ("\000", keys %deps);
+      }
+    else
+      {
+        $providesdb->{"$package\000$version"} = $provides;
+      }
+
+    $seen_package_version{"$package\000$version"} = 1;
+  }

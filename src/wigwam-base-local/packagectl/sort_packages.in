@@ -1,0 +1,387 @@
+#! @PERL@ 
+
+package Packagectl::DependencyDb;
+
+use strict;
+
+use Wigwam::DB;
+
+sub TIEHASH
+{
+  my $what = shift;
+  my $backingfile = shift or die;
+
+  my $self = {};
+  my $class = ref ($what) || $what;
+
+  my $cache = Wigwam::DB::wigdbmopen $backingfile, 0666 
+   or die "error wigdbmopen $backingfile: $!";
+
+  $self->{'dbfile'} = $cache;
+  $self->{'overrides_checked'} = {};
+  $self->{'overrides'} = {};
+
+  return bless $self, $class;
+}
+
+sub FETCH
+{
+  my ($self, $key) = @_;
+
+  if (! exists $self->{'overrides_checked'}->{$key})
+    {
+      my ($package, $version) = split /\000/, $key;
+
+      if (-r "$ENV{'PLAYPEN_ROOT'}/packages/$package-$version/dep")
+        {
+          my @deps;
+
+          open DEP, "$ENV{'PLAYPEN_ROOT'}/packages/$package-$version/dep";
+
+          while (defined ($_ = <DEP>))
+            {
+              chomp;
+
+              push @deps, $_;
+            }
+
+          close (DEP);
+
+          $self->{'overrides'}->{$key} = join "\000", @deps;
+        }
+      elsif (-r "$ENV{'PLAYPEN_ROOT'}/packages/$package/dep")
+        {
+          my @deps;
+
+          open DEP, "$ENV{'PLAYPEN_ROOT'}/packages/$package/dep";
+
+          while (defined ($_ = <DEP>))
+            {
+              chomp;
+
+              push @deps, $_;
+            }
+
+          close (DEP);
+
+          $self->{'overrides'}->{$key} = join "\000", @deps;
+        }
+
+      $self->{'overrides_checked'}->{$key} = 1;
+    }
+
+  return (exists $self->{'overrides'}->{$key}) 
+           ? $self->{'overrides'}->{$key} : $self->{'dbfile'}->{$key};
+}
+
+package Packagectl::ProvideDb;
+
+use strict;
+
+use Wigwam::DB;
+
+sub TIEHASH
+{
+  my $what = shift;
+  my $backingfile = shift;
+
+  my $self = {};
+  my $class = ref ($what) || $what;
+
+  my $cache = Wigwam::DB::wigdbmopen $backingfile, 0666 
+    or die "error wigdbmopen $backingfile: $!";
+
+  $self->{'dbfile'} = $cache;
+  $self->{'overrides'} = {};
+  $self->{'overrides_checked'} = {};
+  $self->{'hashreturn'} = {};
+
+  return bless $self, $class;
+}
+
+sub FETCH
+{
+  my ($self, $key) = @_;
+
+  if (! exists $self->{'overrides_checked'}->{$key})
+    {
+      my %provides;
+
+      my ($package, $version) = split /\000/, $key;
+
+      if (-r "$ENV{'PLAYPEN_ROOT'}/packages/$package-$version/provides")
+        {
+          open PROVIDE, 
+               "$ENV{'PLAYPEN_ROOT'}/packages/$package-$version/provides";
+
+          while (defined ($_ = <PROVIDE>))
+            {
+              chomp;
+              my ($provpackage, $provversion) = split /\s+/, $_, 2;
+
+              $provversion ||= $version;
+
+              $provides{$provpackage} = $provversion;
+            }
+
+          close (PROVIDE);
+
+          $self->{'hashreturn'}->{$key} = \%provides;
+        }
+      elsif (-r "$ENV{'PLAYPEN_ROOT'}/packages/$package/provides")
+        {
+          open PROVIDE, 
+               "$ENV{'PLAYPEN_ROOT'}/packages/$package/provides";
+
+          while (defined ($_ = <PROVIDE>))
+            {
+              chomp;
+              my ($provpackage, $provversion) = split /\s+/, $_, 2;
+
+              $provversion ||= $version;
+
+              $provides{$provpackage} = $provversion;
+            }
+
+          close (PROVIDE);
+
+          $self->{'hashreturn'}->{$key} = \%provides;
+        }
+      elsif ($self->{'dbfile'}->{$key})
+        {
+          $self->{'hashreturn'}->{$key} = 
+            { map { my ($p, $v) = split /\s+/, $_, 2; 
+                    $v ||= $version; 
+                    $p => $v }
+              split /\000/, 
+                    $self->{'dbfile'}->{$key} };
+        }
+
+      $self->{'overrides_checked'}->{$key} = 1;
+    }
+
+  return $self->{'hashreturn'}->{$key};
+}
+
+#---------------------------------------------------------------------
+#                                mainz                                
+#---------------------------------------------------------------------
+
+package Main;
+
+use strict;
+
+use Data::Dumper;
+use Packagectl::Version qw (to_interval intersect);
+use Wigwam::DB;
+
+local $SIG{'__WARN__'} = 
+  sub 
+    {  
+      if ($ENV{"WIGWAM_BASE_WARN"})
+        {
+          warn "Warning: sort-packages: ", @_;
+        }
+    };
+
+local $SIG{'__DIE__'} = 
+  sub 
+    {  
+      unless ($ENV{"WIGWAM_BASE_NO_FATAL"})
+        {
+          die "Fatal: sort-packages: ", @_;
+        }
+
+      exit 1;
+    };
+
+sub compute_dependency_graph_node ($$$$;$$)
+{
+  my ($depdb, $inverseprovidesdb, $versions, $package, $visited, $root) = @_;
+
+  $visited ||= {};
+
+  if (defined ($root))
+    {
+      do { warn "$root has circular dependency"; return } if $root eq $package;
+    }
+  else
+    {
+      $root = $package;
+    }
+
+  my $version = $versions->{$package};
+
+  unless ($visited->{$package})
+    {
+      my @result;
+
+      $visited->{$package} = [];
+
+      if ($depdb->{"$package\000$version"})
+        {
+          my @direct = map { my ($p, $v) = split /\s+/, $_, 2; $p }
+                           split /\000/, $depdb->{"$package\000$version"};
+
+          foreach my $dep (@direct)
+            {
+              if ($versions->{$dep})
+                {
+                  push @result, $dep;
+                  push @result, 
+                          &compute_dependency_graph_node ($depdb,
+                                                          $inverseprovidesdb,
+                                                          $versions,
+                                                          $dep,
+                                                          $visited,
+                                                          $root);
+                }
+              else
+                {
+                  foreach my $provpack (grep { $versions->{$_} } 
+                                        map { my ($a) = split /\s+/, $_, 2; $a }
+                                        split /\000/, 
+                                              $inverseprovidesdb->{$dep})
+                    {
+                      push @result, $provpack;
+                      push @result, 
+                            &compute_dependency_graph_node ($depdb,
+                                                            $inverseprovidesdb,
+                                                            $versions,
+                                                            $provpack,
+                                                            $visited,
+                                                            $root);
+                    }
+                }
+            }
+
+          $visited->{$package} = \@result;
+        }
+    }
+
+  return @{$visited->{$package}};
+}
+
+sub compute_dependency_graph ($$$@)
+{
+  my ($depdb, $inverseprovidesdb, $versions, @packages) = @_;
+
+  my %graph;
+
+  foreach my $package (@packages)
+    {
+      my @deps = compute_dependency_graph_node ($depdb,
+                                                $inverseprovidesdb,
+                                                $versions,
+                                                $package);
+
+      $graph{$package} = {};
+
+      foreach my $dep (@deps)
+        {
+          $graph{$package}->{$dep} ||= 0;
+          ++$graph{$package}->{$dep};
+        }
+    }
+
+  return %graph;
+}
+
+sub dependency_order ($$$)
+{
+  my ($a, $b, $graph) = @_;
+
+  my $depends_a = $graph->{$a};
+  my $depends_b = $graph->{$b};
+
+  my $num_depends_ab = $depends_a->{$b} || 0;
+  my $num_depends_ba = $depends_b->{$a} || 0;
+
+  return $num_depends_ab <=> $num_depends_ba;
+}
+
+#---------------------------------------------------------------------
+#                                main                                 
+#---------------------------------------------------------------------
+
+my $depfile = shift @ARGV or die "missing depfile argument";
+my $providesfile = shift @ARGV or die "missing providesfile argument";
+my $inversefile = shift @ARGV or die "missing inversefile argument";
+my $installedfile = shift @ARGV or die "missing installed file argument";
+
+my %dep;
+tie %dep, 'Packagectl::DependencyDb', $depfile;
+
+my %providesdb;
+tie %providesdb, 'Packagectl::ProvideDb', $providesfile;
+
+my $inverse = Wigwam::DB::wigdbmopen $inversefile, 0666 
+  or die "can't open $inversefile: $!";
+
+# get list of installed packages
+
+my %installed;
+
+if (-e $installedfile)
+  {
+    open FILE, $installedfile 
+      or die "can't open installedfile $installedfile: $!";
+
+    while (defined ($_ = <FILE>))
+      {
+        chomp;
+        my ($package, $version) = split /\s+/, $_, 2;
+        $installed{$package} = $version;
+      }
+
+    close FILE;
+  }
+
+while (@ARGV > 1)
+  {
+    my $package = shift @ARGV;
+    my $version = shift @ARGV;
+
+    $installed{$package} = $version;
+  }
+
+my %graph = compute_dependency_graph (\%dep, 
+                                      $inverse,
+                                      \%installed,
+                                      keys %installed);
+
+warn "graph is ", Dumper (\%graph);
+
+my @ordered;
+
+foreach my $package (keys %installed)
+  {
+    my $index;
+
+    foreach (0 .. $#ordered)
+      {
+        if (dependency_order ($ordered[$_], $package, \%graph) > 0)
+          {
+            $index = $_;
+            last;
+          }
+      }
+    
+    if (defined ($index))
+      {
+        splice (@ordered,
+                $index,
+                1,
+                $package,
+                $ordered[$index]);
+      }
+    else
+      {
+        push @ordered, $package;
+      }
+  }
+
+foreach my $package (@ordered)
+  {
+    print "$package\n";
+  }

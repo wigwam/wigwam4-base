@@ -1,0 +1,214 @@
+<refentry id='packagectl'>
+  <refmeta>
+   <refentrytitle>packagectl</refentrytitle>
+   <manvolnum>1</manvolnum>
+  </refmeta>
+
+  <refnamediv>
+    <refname>packagectl</refname>
+    <refpurpose>manage packages in your wigwam project</refpurpose>
+  </refnamediv>
+
+  <refsynopsisdiv>
+    <cmdsynopsis>
+      <command>packagectl update-packages</command>
+      <arg choice="opt"><replaceable>--dry-run</replaceable></arg>
+    </cmdsynopsis>
+    <cmdsynopsis>
+      <command>packagectl install</command>
+      <arg choice="opt"><replaceable>--dry-run</replaceable></arg>
+      <arg choice="req">
+        <replaceable>package</replaceable>
+        <arg choice="opt"><replaceable>version</replaceable></arg>
+        <arg choice="opt" rep="repeat">
+          <replaceable>package</replaceable>
+          <replaceable>version</replaceable>
+        </arg>
+      </arg>
+    </cmdsynopsis>
+    <cmdsynopsis>
+      <command>packagectl upgrade</command>
+      <arg choice="opt"><replaceable>--dry-run</replaceable></arg>
+      <arg choice="req" rep="repeat">
+        <replaceable>package</replaceable>
+      </arg>
+    </cmdsynopsis>
+    <cmdsynopsis>
+      <command>packagectl uninstall</command>
+      <arg choice="opt"><replaceable>--dry-run</replaceable></arg>
+      <arg choice="req" rep="repeat">
+        <replaceable>package</replaceable>
+      </arg>
+    </cmdsynopsis>
+    <cmdsynopsis>
+      <command>packagectl reinstall</command>
+      <arg choice="opt"><replaceable>--dry-run</replaceable></arg>
+      <arg choice="req" rep="repeat">
+        <replaceable>package</replaceable>
+      </arg>
+    </cmdsynopsis>
+    <cmdsynopsis>
+      <command>packagectl list-dependencies</command>
+      <arg choice="req">
+        <replaceable>package</replaceable>
+        <arg choice="opt"><replaceable>version</replaceable></arg>
+        <arg choice="opt" rep="repeat">
+          <replaceable>package</replaceable>
+          <replaceable>version</replaceable>
+        </arg>
+      </arg>
+    </cmdsynopsis>
+    <cmdsynopsis>
+      <command>packagectl list-conflicts</command>
+      <arg choice="req">
+        <replaceable>package</replaceable>
+        <arg choice="opt"><replaceable>version</replaceable></arg>
+        <arg choice="opt" rep="repeat">
+          <replaceable>package</replaceable>
+          <replaceable>version</replaceable>
+        </arg>
+      </arg>
+    </cmdsynopsis>
+    <cmdsynopsis>
+      <command>packagectl list-provides</command>
+      <arg choice="req">
+        <replaceable>package</replaceable>
+        <arg choice="opt"><replaceable>version</replaceable></arg>
+        <arg choice="opt" rep="repeat">
+          <replaceable>package</replaceable>
+          <replaceable>version</replaceable>
+        </arg>
+      </arg>
+    </cmdsynopsis>
+    <cmdsynopsis>
+      <command>packagectl sync</command>
+    </cmdsynopsis>
+    <cmdsynopsis>
+      <command>packagectl sort</command>
+    </cmdsynopsis>
+  </refsynopsisdiv>
+
+  <refsect1>
+    <title>packagectl install</title>
+    <para>
+      Install the requested version(s) of the package(s) into the project.
+      For any resulting installed package whose version number is not
+      <literal>local</literal>, update the list of project packages,
+      <filename>etc/project-packages</filename>, to reflect the changes.
+    </para>
+
+    <para>
+      By default, if only one package is specified and no version number
+      is indicated, the latest version of that package compatible with
+      the project is installed.  
+    </para>
+     
+    <para>
+      You may install more than one package at once, and in some cases,
+      specifying multiple packages is the only way to resolve constraints.
+      If you want to install more than one package and want to use
+      the latest compatible version, you may use <literal>any</literal>
+      as the version number.
+    </para>
+
+    <para>
+      Any dependencies required to satisfy the installation are also 
+      installed.  However, if currently installed packages are not 
+      compatible with the requested installed packages, installation will
+      be aborted.  In order to change the version of an already installed 
+      packages, it must be one of the packages which is mentioned in the
+      install request, i.e., one of the command line arguments to 
+      <command>packagectl install</command>.
+    </para>
+
+    <para>
+      Packages with dependencies whose versions have changed are automatically
+      reinstalled.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>packagectl upgrade</title>
+    <para>
+      This is equivalent to <command>packagectl install</command> where
+      the package system chooses the requested versions.  If the package
+      is already installed, the requested version number is the greatest
+      compatible version exceeding the current installed version; and
+      if the package is not already installed, the greatest compatible
+      version number.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>packagectl uninstall</title>
+    <para>
+      Remove the requested version(s) of the package(s) from the project.
+      For any resulting uninstalled package whose version number is not
+      <literal>local</literal>, update the list of project packages,
+      <filename>etc/project-packages</filename>, to reflect the changes.
+    </para>
+
+    <para>
+      You may uninstall more than one package at once, and in some cases,
+      specifying multiple packages is the only way to resolve constraints.
+    </para>
+
+    <para>
+      If any package which is dependent upon any uninstalled package is
+      not being uninstalled, uninstallation will be aborted.  In order to
+      uninstall such a package, all of its installed dependencies must
+      be mentioned in the uninstall request, i.e., one of the command
+      line arguments to <command>packagectl uninstall</command>.
+    </para>
+   </refsect1>
+
+  <refsect1>
+    <title>packagectl reinstall</title>
+    <para>
+      Reinstalls the current version(s) of the package(s) into the project.
+      This operation does not cause dependent packages to be reinstalled.
+      It is primarily intended for package developers for debugging purposes,
+      and should not be required during normal usage.
+    </para>
+   </refsect1>
+
+  <refsect1>
+    <title>packagectl list-dependencies</title>
+    <para>
+      List the dependencies associated with the version(s) of the
+      packages(s) requested.
+    </para>
+   </refsect1>
+
+  <refsect1>
+    <title>packagectl list-conflicts</title>
+    <para>
+      List the conflicts associated with the version(s) of the
+      packages(s) requested.
+    </para>
+   </refsect1>
+
+  <refsect1>
+    <title>packagectl list-provides</title>
+    <para>
+      List the provides associated with the version(s) of the
+      packages(s) requested.
+    </para>
+   </refsect1>
+
+  <refsect1>
+    <title>packagectl sync</title>
+    <para>
+      Downloads the latest list of packages and associated metadata from the 
+      project's package archives.
+    </para>
+  </refsect1>
+
+  <refsect1>
+    <title>packagectl sort</title>
+    <para>
+      Display the list of project packages in sorted order.
+    </para>
+  </refsect1>
+
+</refentry>

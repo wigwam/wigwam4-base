@@ -1,0 +1,60 @@
+#! @PERL@
+
+use Fcntl ':mode';
+
+local $SIG{'__WARN__'} = 
+  sub 
+    {  
+      if ($ENV{"WIGWAM_BASE_WARN"})
+        {
+          warn "Warning: image: ", @_;
+        }
+    };
+
+local $SIG{'__DIE__'} = 
+  sub 
+    {  
+      unless ($ENV{"WIGWAM_BASE_NO_FATAL"})
+        {
+          die "Fatal: image: ", @_;
+        }
+
+      exit 1;
+    };
+
+sub image ($$$)
+  {
+    my ($path, $reject, $depth) = @_;
+
+    die "hierarchy too deep" if $depth > 30;
+
+    unless ($reject->{$path})
+      {
+        opendir DIR, $path or die "can't open $path";
+
+        my @files = readdir DIR;
+
+        closedir DIR;
+
+        foreach my $filename (@files)
+          {
+            next if $filename eq '.' || $filename eq '..';
+
+            my ($mode, $mtime) = (lstat ("$path/$filename"))[2, 9];
+
+            print join ("\000", "$path/$filename", $mtime), "\n";
+
+            if (S_ISDIR ($mode))
+              {
+                &image ("$path/$filename", $reject, $depth + 1);
+              }
+          }
+      }
+  }
+
+my $path = shift @ARGV or die "missing argument";
+my %reject = map { $_ => 1 } @ARGV;
+
+image $path, \%reject, 0;
+
+exit (0);

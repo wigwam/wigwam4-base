@@ -1,0 +1,26 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/sh-macros
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once libexec/packagectl/functions
+configurable_source --once libexec/packagectl/BASE/functions
+
+packagectl_BASE_parse_args "$@" || exit 1
+
+# wigwam-base is critical, so install first, then uninstall
+
+old_version=`  grep "^$package " "$PLAYPEN_ROOT"/ext/etc/installed-packages \
+             | cut -f2 -d' '`
+
+test "x$old_version" != "x" || exit 1
+
+WIGWAM_PROPELLER_MODE="stderr"
+export WIGWAM_PROPELLER_MODE
+                                                                                
+packagectl_pipeline "install" "$package" "$version"  || exit 1
+packagectl_pipeline "uninstall" "$package" "$old_version" || exit 1
+
+exit 99

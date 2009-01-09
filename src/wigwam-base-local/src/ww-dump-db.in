@@ -1,0 +1,13 @@
+#! @PERL@ 
+
+use strict;
+use Wigwam::DB;
+
+my $file = shift @ARGV or die;
+
+my $hashref = Wigwam::DB::wigdbmopen $file, 0666 or die $!;
+
+while (my ($key, $value) = each %$hashref)
+  {
+    print join ("\t", $key, $value), "\n";
+  }

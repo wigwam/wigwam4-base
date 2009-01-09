@@ -1,0 +1,27 @@
+#!/bin/cat
+
+# vim: syntax=sh
+
+##
+## this file to be sourced
+##
+
+test_functions_id=`basename $0`
+die ()  {
+  echo "$test_functions_id FAIL: $@"
+  exit 1
+}
+
+# compare_count
+our_compare_count="0"
+compare_count () {
+  our_compare_count=`expr "$our_compare_count" + 1`
+}
+
+
+# compare VALUE VALUE 
+compare () { 
+  compare_count
+  test "x$1" = "x$2" || die "test #$compare_count: failed '$1' is not '$2'"
+}
+

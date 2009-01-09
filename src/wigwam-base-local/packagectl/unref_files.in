@@ -1,0 +1,85 @@
+#! @PERL@ 
+
+use strict;
+
+use Wigwam::DB;
+
+local $SIG{'__WARN__'} = 
+  sub 
+    {  
+      if ($ENV{"WIGWAM_BASE_WARN"})
+        {
+          warn "Warning: unref_files: ", @_;
+        }
+    };
+
+local $SIG{'__DIE__'} = 
+  sub 
+    {  
+      unless ($ENV{"WIGWAM_BASE_NO_FATAL"})
+        {
+          die "Fatal: unref_files: ", @_;
+        }
+
+      exit 1;
+    };
+
+my $files_file = shift @ARGV or die "missing filesfile argument\n";
+my $db_file = shift @ARGV or die "missing dbfile argument\n";
+
+open FILES, $files_file or die "can't open $files_file: $!\n";
+my @filelist = map { chomp; s%^(>|~)\s+%%; $_ } grep { m%^(>|~)% } <FILES>;
+close FILES;
+
+my $db = Wigwam::DB::wigdbmopen $db_file, 0666
+  or die "error wigdbmopen $db_file: $!";
+
+foreach my $file (@filelist)
+  {
+    next if -d $file && ! -l $file;
+
+    unless ($db->{$file})
+      {
+        warn "$file not in ref database";
+        next;
+      }
+
+    --$db->{$file};
+
+    if ($db->{$file} == 0)
+      {
+        delete $db->{$file};
+        print STDERR "unlink $file\n";
+        unlink $file or warn "can't unlink $file: $!\n";
+      }
+    else
+      { 
+        warn "not unlinking $file (ref_count: $db->{$file})";
+      }
+  }
+
+foreach my $file (reverse @filelist)
+  {
+    next unless -d $file && ! -l $file;
+
+    unless ($db->{$file})
+      {
+        warn "$file not in ref database";
+        next;
+      }
+
+    --$db->{$file};
+
+    if ($db->{$file} == 0)
+      {
+        delete $db->{$file};
+        print STDERR "rmdir $file\n";
+        rmdir $file or warn "can't rmdir $file: $!\n";
+      }
+    else
+      { 
+        warn "not removing directory $file (ref_count: $db->{$file})";
+      }
+  }
+
+exit (0);

@@ -1,0 +1,1 @@
+eval \{ __functest \(\) \{ __myvar=1 \; unset __megavar \; \} \; __myvar=0 \;  __megavar=2 \; __functest \; test \"x\$__myvar\" = \"x1\" \&\& test \"x\$__megavar\" = \"x\" \; \} 2>/dev/null ;

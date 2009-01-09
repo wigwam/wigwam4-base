@@ -1,0 +1,42 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once libexec/packagectl/BASE/functions
+
+packagectl_BASE_parse_args "$@" || exit 1
+
+   packagectl_BASE_compute_installed_files_pre "$package" "$version"    \
+||                                                                      \
+  {
+    wigwam_base_fatal "$package-$version pre-install: "                 \
+                      "compute installed files pre failed"
+    exit 1
+  }
+
+#
+#  Make prerequisite directories.
+#
+
+   configurable_which "packages/$package-$version/dirs" packagectl_pipeline_package_dirs \
+|| configurable_which "packages/$package/dirs" packagectl_pipeline_package_dirs
+
+if test "x$packagectl_pipeline_package_dirs" != "x"; then
+  dirlist=`cat "$packagectl_pipeline_package_dirs"`
+  test "$?" = "0" || {
+     wigwam_base_fatal "$package-$version pre-install: " \
+                       "error reading $packagectl_pipeline_package_dirs" 1>&2
+    exit 1
+  }
+  for a in $dirlist ; do
+    ww-mkdir-p "${PLAYPEN_ROOT}/ext/$a" || {
+      wigwam_base_fatal "$package-$version pre-install: " \
+                        "error creating directory ${PLAYPEN_ROOT}/ext/$a"
+      exit 1
+    }
+  done
+fi
+
+exit 0

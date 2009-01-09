@@ -1,0 +1,9 @@
+wigwam-base is intended to be a 'make' style package,
+but the pre-build script here is for invoking automake,
+so that stuff not usually checked into CVS when developing
+(e.g. configure) is generated.
+
+so, to support this, various files are generated with .local 
+extension in autogen.sh ... these shouldn't be checked into CVS
+(of course), but also, shouldn't be shipped with wigwam-base 
+when packaged for wigwam.

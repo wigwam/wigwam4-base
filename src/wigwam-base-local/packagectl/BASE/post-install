@@ -1,0 +1,45 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once libexec/packagectl/BASE/functions
+
+packagectl_BASE_parse_args "$@" || exit 1
+
+ww-mkdir-p "$PLAYPEN_ROOT/ext/private" || exit 1
+
+   packagectl_BASE_compute_installed_files_post "$package" "$version"   \
+||                                                                      \
+  {
+    wigwam_base_fatal "$package-$version post-install:"                 \
+                      "compute installed files post failed"
+    exit 1
+  }
+
+configurable_which "packages/$package-$version/installed_files" installed_files
+
+   configurable_run "libexec/packagectl/ref_files"                      \
+                    "$installed_files"                                  \
+                    "$PLAYPEN_ROOT/ext/private/file-ref-counts"         \
+||                                                                      \
+  {
+    wigwam_base_fatal "$package-$version post-install: ref files failed"
+
+    exit 1
+  }
+
+nicepackage=`perl -e '$_ = shift; s/\W/_/g; print' "$package"`
+niceversion=`perl -e '$_ = shift; s/\W/_/g; print' "$version"`
+
+if    test "x$version" != "xlocal"                                      \
+   && test "x$WIGWAM_BASE_NO_CLEANUP_ALL" = x                           \
+   && eval test \"x\$WIGWAM_BASE_NO_CLEANUP_$nicepackage\" = x          \
+   && eval test \"x\$WIGWAM_BASE_NO_CLEANUP_$nicepackage_$niceversion\" = x
+   then
+        test -d "$PLAYPEN_ROOT/ext/src/$package-$version"               \
+     && rm -rf "$PLAYPEN_ROOT/ext/src/$package-$version"
+   fi
+
+exit 0

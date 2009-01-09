@@ -1,0 +1,179 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/sh-macros
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once libexec/packagectl/BASE/functions
+
+packagectl_BASE_parse_args "$@" || exit 1
+
+perl_version=`perl -e 'use Config; print "$Config{version}"'`
+perl_archname=`perl -e 'use Config; print "$Config{archname}"'`
+
+perl_makefile_options="
+          PREFIX=\"$PLAYPEN_ROOT/ext\"
+          INSTALLSITELIB=\"$PLAYPEN_ROOT/ext/lib/perl5/$perl_version\"
+          INSTALLSITEARCH=\"$PLAYPEN_ROOT/ext/lib/perl5/$perl_version/$perl_archname\"
+          INSTALLMAN1DIR=\"$PLAYPEN_ROOT/ext/man/man1\"
+          INSTALLMAN3DIR=\"$PLAYPEN_ROOT/ext/man/man3\"
+          INSTALLPRIVLIB=\"$PLAYPEN_ROOT/ext/lib/perl5/$perl_version\"
+          INSTALLARCHLIB=\"$PLAYPEN_ROOT/ext/lib/perl5/$perl_version/$perl_archname\""
+
+   configurable_source --once "packages/$package-$version/options"      \
+|| configurable_source --once "packages/$package/options"
+
+cd "${PLAYPEN_ROOT}/ext/src/$package-$version" || exit 1
+
+# we depart from backwards compatibility here ... 
+# the old wigwam cd'd to build_subdir after checking script
+# for execute permissions ... which is probably a bug
+
+if test "x$build_subdir" != "x"
+  then
+    if test -d "$build_subdir"
+      then
+        cd "$build_subdir" || exit 1
+      else
+        wigwam_base_critical "$package-$version build:"
+                             "no build subdir: '$build_subdir'"
+        exit 1
+      fi
+  fi
+
+if test "x$configure_style" != "xnone"
+  then
+    if test "x$configure_script" = "x"
+      then
+        configure_script="./configure"
+      fi
+
+    if test "x$configure_interpreter" = "x"
+      then
+        if ww-test-x "$configure_script"
+          then
+            configure_interpreter=""
+          else
+            configure_interpreter="sh"
+          fi
+      fi
+  fi
+
+if test "x$configure_style" = "x"
+  then
+    configure_style=gnu
+  fi
+
+# need envvars in case of backwards compatibility
+                                                      
+build_path="${PLAYPEN_ROOT}/ext/src/$package-$version"
+rootdir=$PLAYPEN_ROOT
+extdir="$PLAYPEN_ROOT/ext"
+
+if test "x$pre_configure_script" != "x"
+  then
+    true
+       eval "$pre_configure_script"                                     \
+    ||                                                                  \
+      {
+        wigwam_base_critical "$package-$version build:"                 \
+                             "pre_configure_script"                     \
+                             "'$pre_configure_script' failed"
+        exit 1
+      }
+  fi
+
+case "$configure_style" in
+  perl)
+    inc="-I$PLAYPEN_ROOT/ext/include"
+    test "x$INC" = x || inc="$INC $inc"
+      echo "$configure_input"                                           \
+    | eval                                                              \
+         perl Makefile.PL                                               \
+         $configure_options                                             \
+         \$perl_makefile_options                                        \
+         INC=\"\$inc\"                                                  \
+    ||                                                                  \
+      {                                                                     
+        wigwam_base_critical "$package-$version build:"                 \
+                             "error running Makefile.PL" 
+        exit 1
+      }
+
+    ;;
+  gnu | prefix-only)
+        echo "$configure_input"                                         \
+      | eval                                                            \
+            $configure_interpreter                                      \
+            $configure_script --prefix=\"\$PLAYPEN_ROOT/ext\"           \
+            $configure_options                                          \
+    ||                                                                  \
+      {
+        wigwam_base_critical                                            \
+          "$package-$version build: error running '$configure_script'" 
+        exit 1
+      }
+
+    ;;
+
+  foreign)
+         echo "$configure_input"                                        \
+      | eval                                                            \
+         $configure_interpreter $configure_script                       \
+         $configure_options                                             \
+    ||                                                                  \
+      {
+        wigwam_base_critical                                            \
+          "$package-$version build: error running '$configure_script'" 
+        exit 1
+      }
+
+    ;;
+
+  none)
+    ;;
+esac
+
+# pre_build_script/post_build_script: depricated backwards compatibility
+
+if test "x$pre_build_script" != "x"
+  then
+    true
+       eval "$pre_build_script"                                         \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$package-$version build:"                    \
+                          "pre_build_script '$pre_build_script' failed"
+
+        exit 1
+      }
+  fi
+
+if test "x$no_build_phase" != "x1"
+  then
+    true
+       eval "$gnumake $build_options $build_only_options"               \
+    ||                                                                  \
+      {
+        wigwam_base_critical "$package-$version build:"                 \
+                             "error $gnumake $build_options"            \
+                             "$build_only_options"
+        exit 1
+      }
+  fi
+
+if test "x$post_build_script" != "x"
+  then
+    true
+       eval "$post_build_script"                                        \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$package-$version build:"                    \
+                          "post_build_script '$post_build_script'"      \
+                          "failed"
+        exit 1
+      }
+  fi
+
+exit 0

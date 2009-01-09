@@ -1,0 +1,41 @@
+ww_int PLAYPEN_ROOT
+ww_int WIGWAM_INTERACTIVE_PID
+
+ww_int_pre_colon PATH "$PLAYPEN_ROOT/ext/sbin"
+ww_int_pre_colon PATH "$PLAYPEN_ROOT/sbin"
+ww_int_pre_colon PATH "$PLAYPEN_ROOT/ext/bin"
+ww_int_pre_colon PATH "$PLAYPEN_ROOT/bin"
+ww_int PATH
+
+ww_int_pre_colon MANPATH "$PLAYPEN_ROOT/ext/man"
+ww_int_pre_colon MANPATH "$PLAYPEN_ROOT/man"
+
+ww_int MANPATH
+
+ww_pre_colon PERL5LIB "$PLAYPEN_ROOT/ext/lib/perl5"
+ww_pre_colon PERL5LIB "$PLAYPEN_ROOT/lib/perl5"
+
+ww_int PERL5LIB
+
+ww_pre_colon LD_LIBRARY_PATH "$PLAYPEN_ROOT/ext/lib"
+ww_pre_colon LD_LIBRARY_PATH "$PLAYPEN_ROOT/lib"
+
+ww_pre_delim CFLAGS "-I$PLAYPEN_ROOT/ext/include" ' '
+ww_pre_delim CFLAGS "-I$PLAYPEN_ROOT/include" ' '
+
+ww_pre_delim CXXFLAGS "-I$PLAYPEN_ROOT/ext/include" ' '
+ww_pre_delim CXXFLAGS "-I$PLAYPEN_ROOT/include" ' '
+
+ww_pre_delim LDFLAGS "-L$PLAYPEN_ROOT/ext/lib" ' '
+ww_pre_delim LDFLAGS "-L$PLAYPEN_ROOT/lib" ' '
+
+PROJECT_NAME=`cat "$PLAYPEN_ROOT"/etc/project-name`
+PLAYPEN_TAG="$PROJECT_NAME-$LOGNAME"
+LOCAL_VAR="/var/tmp/$PLAYPEN_TAG"
+
+WIGWAM_HOST_CPU="@host_cpu@"
+WIGWAM_HOST_VENDOR="@host_vendor@"
+WIGWAM_HOST_OS="@host_os@"
+WIGWAM_HOST="@host@"
+
+WIGWAM_MAJOR_VERSION="4"

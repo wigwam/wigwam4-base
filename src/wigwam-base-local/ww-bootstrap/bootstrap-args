@@ -1,0 +1,99 @@
+#! /bin/sh - for syntax hilighting only
+#
+# Start bootstrap-args
+#
+
+usage="usage: $id --project=PROJECT-NAME
+
+Sets up a new wigwam project.
+ 
+This program will make a directory named PROJECT-NAME
+containing the new project.
+ 
+Mandatory parameters:
+   --project=project_name        Specify the name of the project.
+ 
+Options:
+   --package-archive=archive_url URL for the archive of source packages.
+   --package-archive+=ARCHIVE    Add a package-archive; still use default too.
+   --from-cvs                    Assume that the project is
+                                 coming from cvs, and does not need
+                                 the base initialization.
+   --quiet                       Suppress verbose messages.
+"
+                                                                                
+
+#---------------------------------------------------------------------
+# Parse arguments
+#---------------------------------------------------------------------
+
+if test $# -eq 0 ; then
+  echo "$usage" 1>&2
+  exit 1
+fi
+
+while test $# -gt 0; do
+  arg="$1"
+  shift
+
+  case "$arg" in
+    --project)
+      project="$1"
+      shift
+      if test "$project" = "" ; then 
+        echo "$id: --project requires an argument" 1>&2
+        exit 1
+      fi
+      ;;
+
+    --project=*)
+      project=`echo $arg | sed -e 's/^.*--project=//'`
+      ;;
+
+    --package-archive)
+      package_archives="$package_archives $1"
+      if test "$1" = "" ; then 
+        echo "$id: --package-archive requires an argument" 1>&2
+        exit 1
+      fi
+      add_default_package_archive=0
+      shift
+      ;;
+
+    --package-archive=*)
+      package_archive=`echo $arg | sed -e 's/^.*--package-archive=//; s/,/ /g;'`
+      package_archives="$package_archives $package_archive"
+      add_default_package_archive=0
+      ;;
+
+    --package-archive+=*)
+      package_archive=`echo $arg | sed -e 's/^.*--package-archive.=//; s/,/ /g;'`
+      package_archives="$package_archives $package_archive"
+      add_default_package_archive=1
+      ;;
+
+    --from-cvs)
+      from_cvs_func
+      ;;
+
+    --quiet)
+      quiet=1
+      ;;
+
+    *)
+      echo "$usage" 1>&2
+      exit 1
+      ;;
+  esac
+done
+
+case "$project" in
+  */*)
+    echo "$id: ERROR: project-name must not contain a / character." 1>&2
+    exit 1
+    ;;
+esac
+
+test "x$add_default_package_archive" = "x1" && {
+  package_archives="$package_archives $default_package_archive"
+}

@@ -1,0 +1,333 @@
+#! /bin/sh
+#
+# the first line is for syntax coloring in VIM only
+# you can't execute this file directly
+# only source it from other shell scripts
+
+configurable_source --once libexec/functions/configurable-functions
+configurable_source --once libexec/functions/wigwam-base-functions
+
+archive_get_archive_type () \
+  {
+    perl -e '$ARGV[0] =~ m%^([^:]+):% && print $1;' "$1"
+
+    return $?
+  }
+
+archive_get_resource_type () \
+  {
+    # (type archive resource saveto)
+
+    test "x$1" != "x" || return 1
+
+       configurable_run "libexec/archives/$1/pre-get" "$@"              \
+    ||                                                                  \
+      {
+           test $? -eq 99                                               \
+        && configurable_run "libexec/archives/BASE/pre-get" "$@"
+      }                                                                 \
+    ||
+      {
+        wigwam_base_critical "'pre-get $@' failed"
+        return 1
+      }
+
+       configurable_run "libexec/archives/$1/get" "$@"                  \
+    ||                                                                  \
+      {
+           test $? -eq 99                                               \
+        && configurable_run "libexec/archives/BASE/get" "$@"
+      }                                                                 \
+    ||
+      {
+        wigwam_base_critical "'get $@' failed"
+        return 1
+      }
+
+       configurable_run "libexec/archives/$1/post-get" "$@"             \
+    ||                                                                  \
+      {
+           test $? -eq 99                                               \
+        && configurable_run "libexec/archives/BASE/post-get" "$@"
+      }                                                                 \
+    ||
+      {
+        wigwam_base_critical "'post-get $@' failed"
+        return 1
+      }
+
+    return 0
+  }
+
+archive_get_resource () \
+  {
+    # (archive resource saveto)
+
+    wigwam_base_assert_nonempty "archive_get_resource" "$1" || return 1
+
+    archive_get_resource_type `archive_get_archive_type "$1"` "$@"
+
+    return $?
+  }
+
+archive_check_package_local_file () \
+  {
+    # packages sometimes try to md5sum the md5sums file, 
+    # which is futile, unless you are the NSA
+
+    if    test "x$3" = "xmd5sums"       \
+       || test "x$3" = "x$1-$2.md5sums"
+      then
+        return 0
+      fi
+
+    # purposefully do not check the overriden version here.
+
+    test -r "$PLAYPEN_ROOT/ext/packages/$1-$2/$3" || return 1
+
+    archive_check_package_local_file_my_md5=`                   \
+      ww-md5 "$PLAYPEN_ROOT/ext/packages/$1-$2/$3"`
+
+       test "x$archive_check_package_local_file_my_md5" != "x"  \
+    || return 1
+
+       configurable_which "packages/$1-$2/md5sums"              \
+         archive_check_package_local_file_md5                   \
+    || configurable_which "packages/$1/md5sums"                 \
+         archive_check_package_local_file_md5                   \
+    || return 1
+
+    archive_check_package_local_file_want_md5=`                 \
+      perl -e                                                   \
+        "\\\$esc = quotemeta (\"$3\"); 
+         while (<>) {    m%^(\w+)\s*(\\\$esc)\\\$% 
+                      && do { print \\\$1; exit 0 } }
+         exit 1" $archive_check_package_local_file_md5` 
+
+       test "x$archive_check_package_local_file_want_md5" != "x"        \
+    || return 1
+
+    test   "x$archive_check_package_local_file_want_md5"                \
+         = "x$archive_check_package_local_file_my_md5"
+
+    return $?
+  }
+
+archive_get_mapped_arch () \
+  {
+       configurable_which "packages/$1-$2/archs"                \
+                          archive_get_mapped_arch_file          \
+    || return 1
+
+       perl -e '$arch = quotemeta ($ENV{"WIGWAM_HOST"});
+                exit ! scalar grep { m%^$arch\s+% } <>;'        \
+       "$archive_get_mapped_arch_file"                          \
+    || return 1
+
+    archive_get_mapped_arch_arch=`
+      perl -le '$arch = quotemeta ($ENV{"WIGWAM_HOST"});
+                while (<>) { chomp; 
+                             if (m%^$arch\s+(.*)%) { 
+                             print $1; exit 0 } }; exit 1'      \
+               "$archive_get_mapped_arch_file"`
+
+    eval $3="\$archive_get_mapped_arch_arch"
+
+    return 0
+  }
+ 
+archive_check_package_local () \
+  {
+    # (package, version)
+
+    # we purposefully do not check the overrides version of the
+    # files file here, because we can assume what's in the project
+    # is correct, and what we are trying to check is the downloaded 
+    # stuff (and this way, it alleviates the need to override the md5sums
+    # file anytime a file is overridden)
+    #
+    # in fact, the only override file we check in this process is md5sums
+    # and that's just because somebody might be trying to override
+    # a bad md5sums file in the archive.
+
+      {
+           configurable_test_r "packages/$1-$2/md5sums"         \
+        && test -r "$PLAYPEN_ROOT/ext/packages/$1-$2/files"
+      }                                                         \
+    || return 1
+
+        cat "$PLAYPEN_ROOT/ext/packages/$1-$2/files"            \
+      | while read archive_check_package_local_f
+          do
+               archive_check_package_local_file "$1" "$2"       \
+                 "$archive_check_package_local_f"               \
+            || return 1
+          done                                                  \
+    || return $?
+
+    # archsfile backwards compatibility
+    #
+    # to be depricated in favor of binary package type
+    # no overrides here, purposefully (see check_package_local above)
+
+       test -r "$PLAYPEN_ROOT/ext/packages/$1-$2/archs"         \
+    &&                                                          \
+      {
+           archive_get_mapped_arch "$1" "$2"                    \
+             archive_check_package_local_arch                   \
+        ||                                                      \
+          {
+            wigwam_base_critical "archive_check_package_local:" \
+                                 "arch $WIGWAM_HOST not supported by $1-$2"
+            return 1
+          }
+
+        archive_check_package_local_arch_file="$PLAYPEN_ROOT/ext/packages/$1-$2/archfiles.$archive_check_package_local_arch"
+       
+           test -r "$archive_check_package_local_arch_file"     \
+        &&                                                      \
+          {
+                cat "$archive_check_package_local_arch_file"    \
+              | while read archive_check_package_local_f
+                  do
+                       archive_check_package_local_file "$1" "$2" \
+                         "$archive_check_package_local_f"         \
+                    || return 1
+                  done                                          \
+            || return $?
+          }
+      }
+
+    return 0
+  }
+
+archive_download_package () \
+  {
+    # (archive, package, version)
+
+    wigwam_base_assert_nonempty "archive_download_package" "$1" || return 1
+    wigwam_base_assert_nonempty "archive_download_package" "$2" || return 1
+    wigwam_base_assert_nonempty "archive_download_package" "$3" || return 1
+
+    # no overrides here, purposefully (see check_package_local above)
+
+    # required for all package types: files and md5sums
+    # backwards compatibility: look for $package-$version. prefix
+
+       archive_get_resource "$1" "$2/$3/files" "files" 1                      \
+    ||                                                                        \
+      {
+           archive_get_resource "$1" "$2/$3/$2-$3.files" "$2-$3.files" 1      \
+        && ln -sf "$2-$3.files" "files"
+      }                                                                       \
+    || return $?
+
+       archive_get_resource "$1" "$2/$3/md5sums" "md5sums" 1                  \
+    ||                                                                        \
+      {
+           archive_get_resource "$1" "$2/$3/$2-$3.md5sums" "$2-$3.md5sums" 1  \
+        && ln -sf "$2-$3.md5sums" "md5sums"
+      }                                                                       \
+    || return $?
+
+      cat files                                                               \
+    | while read archive_download_package_x
+        do
+            archive_get_resource "$1"                                         \
+                                 "$2/$3/$archive_download_package_x"  \
+                                 "$archive_download_package_x" 1      \
+          || return $?
+        done
+
+    # more backwards compatibility: $package-$version.extension -> extension
+
+    for archive_download_x in ./*
+      do
+        if test "x$archive_download_x" != "x./*"
+          then
+            archive_download_compat=`                           \
+                perl -e "\\\$esc = quotemeta (\"$2-$3\");
+                         \\\$ARGV[0] =~ s%^./\\\$esc\.%%; 
+                         print \\\$ARGV[0]" "$archive_download_x"`
+            if test    "x$archive_download_compat"              \
+                    != "x$archive_download_x"
+              then
+                ln -sf "$archive_download_x"                    \
+                       "$archive_download_compat"
+              fi
+          fi
+      done
+
+    if    test -r archs                                         \
+       && archive_get_mapped_arch "$2" "$3"                     \
+            archive_download_package_arch                       \
+       && test -r "archfiles.$archive_download_package_arch" 
+      then
+          cat "archfiles.$archive_download_package_arch"        \
+        | while read archive_download_package_x
+            do
+              archive_get_resource                              \
+                "$1"                                            \
+                "$2/$3/$archive_download_package_x"             \
+                "$archive_download_package_x" 1                 \
+            || return $?
+          done
+      fi
+
+     for archive_download_x in ./*
+      do
+        if test "x$archive_download_x" != "x./*"
+          then
+            archive_download_compat=`                           \
+                perl -e "\\\$esc = quotemeta (\"$2-$3\");
+                         \\\$ARGV[0] =~ s%^./\\\$esc\.%%; 
+                         print \\\$ARGV[0]" "$archive_download_x"`
+
+            if test "x$archive_download_compat" != "x$archive_download_x"
+              then
+                ln -sf "$archive_download_x" "$archive_download_compat"
+              fi
+          fi
+      done
+
+    # backwards compatability
+    # type defaults to make, unless there is a .services file
+
+    if test -r "type"
+      then
+        true
+      else 
+        if test -r "services"
+          then
+            echo "service" > type
+            echo "classic" > service_type
+          else
+            echo "make" > type
+          fi
+      fi
+
+    # set execute permissions for any package specific methods
+
+    for archive_download_x in check-system unpack build install uninstall
+      do
+        for archive_download_p in                               \
+              "pre-$archive_download_x"                         \
+              "$archive_download_x"                             \
+              "post-$archive_download_x"
+          do
+            if test -r "$archive_download_p"
+              then
+                chmod +x "$archive_download_p"
+              fi
+          done
+      done
+
+    test -r "prepatch" && chmod +x prepatch
+    test -r "pre-patch" && chmod +x pre-patch
+    test -r "postpatch" && chmod +x postpatch
+    test -r "post-patch" && chmod +x post-patch
+       
+    archive_check_package_local "$2" "$3"
+
+    return $?
+  }

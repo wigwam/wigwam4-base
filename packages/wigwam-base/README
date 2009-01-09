@@ -1,0 +1,5 @@
+making (any version of) wigwam-base depend upon ccache is just a trick to
+ensure ccache is compiled before any other packages.
+
+it's done in a dep.local to indicate it shouldn't be exported when packaging
+a release of wigwam-base for wigwam.

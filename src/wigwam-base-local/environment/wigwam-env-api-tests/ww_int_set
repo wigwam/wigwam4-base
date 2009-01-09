@@ -1,0 +1,19 @@
+#! /bin/sh
+
+. ../functions
+
+. ./test_functions
+
+# ww_int_set
+
+# check VAR VALUE
+check () {
+  ww_int_set "$1" "$2"
+  eval 'compare $'"$1"' $2'
+  ww_has_componant ' ' "$interactive_variables" "$1"  ||
+    die "test #$compare_count: failed '$1' is not in interactive_variables."
+}
+
+foo=""
+check foo bar
+check foo taco

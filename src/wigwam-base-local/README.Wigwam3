@@ -1,0 +1,171 @@
+Summary of changes from wigwam 3:
+
+* Minimalized wigwam-base, simplified bootstrap
+
+Wigwam base now contains only the package and environment machinery.
+Previous base functionality, such as servicectl and pubtool are now
+seperate packages.  The now smaller wigwam base tarball is uuencoded
+and placed inside wigwam-bootstrap, greatly simplifying and increasing
+the portability of the bootstrap process.
+
+TODO: The plan is to also include the packaging utils into wigwam base,
+so that, a local archive can be entirely done from wigwam-bootstrap, greatly 
+simplifying the package archive bootstrap process.
+
+* Extensible and configurable package system
+
+Packagectl now operates much like servicectl in wigwam 3.  There are package
+methods (download/unpack/build/install/uninstall) which can be provided on a
+per package basis, and the system provides defaults for some of the methods.
+In addition, there can be package-type specific methods.  For each method,
+e.g., unpack, there are pre- and post- method hooks, e.g., pre-unpack and 
+post-unpack.  The default dispatch rules are:
+
+pre methods:
+BASE package class method, if any
+type specific class method, if any
+package any-verson method, if any
+package specific-version method, if any
+
+methods, post methods:
+package specific-version method, if any
+package any-verson method, if any
+type specific class method, if any
+BASE package class method, if any
+
+Methods can halt the dispatch chain by returning a non-zero exit status.
+The special exit status of 99 is considered a successful operation by the
+packaging system, but halts further dispatch.
+
+Any package of type X has an implicit dependency on the package 
+"build-package-X".  Wigwam base provides "build-package-make"
+and "build-package-raw".  Servicectl provides "build-package-service".
+
+* Cleaning uninstall
+
+The BASE pre-install and post-install methods take a stat-snapshot of
+ext/ to determine what files were created by the install.  This is then
+used in the BASE uninstall method to remove files that 1) were created
+by the install, and 2) have not been modified since install time.
+
+NB: Actually, as of 4.1.0, files/directories in ext are reference counted 
+and removed if uninstall causes the ref count to hit zero.
+
+This should help identify "dangling file" package bugs that were previously
+only discovered by 'rm -rf ext; ./autogen.sh'.
+
+* Packagectl planner and archive support
+
+The archives now contain sufficient information for the packaging system to 
+construct an install plan before downloading any packages.  Specifically
+archives now contain the files "dependencies", "conflicts", "provides",
+and "types", which are constructed by the packaging utils (these changes
+have been backported to the wigwam 3 packaging utils).  These metadata
+files are downloaded from the archive when the package-lists are downloaded,
+and they are compiled into local databases for fast manipulation.
+
+The major advantages are 1) the "--dry-run" ability, where the user can 
+ask what would happen if package X were requested to be installed, 
+2) the ability to backtrack in the plan construction to overcome conflicts,
+and 3) the ability to search provides to satisfy a dependency.
+
+* Consistent ubiquitous overrides
+
+The incredibly useful package-overrides feature from wigwam 3 has been extended
+to everything.  Specifically, any file ext/X is overridden by the corresponding
+file X (relative to playpen root), and in addition, X.local overrides X.  
+Overriding here means complete replacement ... if X exists, the file in 
+ext/X is never consulted.
+
+Thus to override packages, one places the desired override in
+packages/package-version/X; to override the packagectl planner, one
+would place a new binary in libexec/packagectl/plan; to override the set
+of unsanitized variables, one would place a file in etc/unsanitized.
+To do these things in a playpen specific, non-revision controlled  way, 
+one would use, e.g., plan.local, or unsanitized.local.
+
+In addition to providing customization behavior, this also allows wigwam
+to aggressively set defaults.  For instance, wigwam-base installs a
+file into ext/etc/package-archives which contains 
+"http://wigwam-framework.org/package-archive", thus making it possible to
+use a project, right away, without having specified package-archives.
+
+* Extensible environment construction
+
+Packages can change the way the environment is constructed by manipulating
+an sysv-init style directory ext/etc/config-order/ (normal override rules 
+apply, so projects may override this via etc/config-order/).  For example,
+wigwam-base comes with no concept of role or cluster.  These concepts are
+provided by the pubtool package, and are implemented by inserting into the 
+environment construction chain hooks for cluster and role configs (and 
+config.pres).
+
+The default set of files and source order that results from installing 
+wigwam-base, servicectl, and pubtool is designed to exactly match the 
+order specified for wigwam 3, at http://wigwam-framework.org/doc/wigwam-standard-programs.html#SCRIPTS-TO-LOAD-CONFIGURATIONS
+
+* Unification of in-project source code and packages
+
+Projectctl has been completely removed.  Instead, project sources
+are installed into the project as packages.  Basically, the overrides 
+system allows one to place the source code for a project in src/package_name, 
+and the package definition for the source code in packages/package_name,
+so in project source code becomes a package with a trivial download phase.
+
+In project packages are special in two ways: 1) they have the special version
+"local", and 2) they are assumed to depend on all packages it 
+etc/project-packages.
+
+Thus, 'packagectl update-packages' first installs/upgrades all packages in 
+etc/project-packages, then uninstalls all existing local packages, and
+then installs all local packages listed in etc/in-project-packages.  (local
+packages are always uninstalled/installed on update-packages, because 
+precise versioning has been forfeited on local packages, and the system 
+assumes that they have changed.)
+
+* Extensible archive types
+
+An archive API has been abstracted, such that new archive types can be defined.
+The archive type is identified by the protocol portion of the url, e.g.,
+a line in etc/package-archives of the form
+
+foo:/bar/baz/blorf
+
+would indicate a package-archive of type foo.  The project would either have
+to provide a in-project-package that provides archive-type-foo, or else
+would have to provide another package archive from which the implementation
+for archive type foo could be downloaded, i.e., a package which provides 
+archive-type-foo.
+
+(TODO: This part is not completely implemented ... currently, wigwam 
+doesn't know how to fetch archive implementations during the archive 
+bootstrap process.)
+
+wigwam base provides archive-type-http, archive-type-file, and 
+archive-type-LOCAL.
+
+(TODO: wigwam-base dosen't really provide archive-type-LOCAL right now).
+
+* Update-local eliminated
+
+'packagectl update-local' is no longer required or supported.  Instead,
+wigwam-base signs each file that it places outside of ext.  If these files
+have not been modified on upgrade, wigwam-base replaces these files,
+otherwise, a '.dist' version of the file is placed beside the modified file
+and the playpen maintainer is required to merge the differences manually.
+
+setup-env and unsetup-env are not, by default, checked into revision
+control, since logically they are part of the wigwam API, might change
+upon upgrade of wigwam-base, and therefore are written upon install
+of wigwam-base.  projects may check in a setup-env or unsetup-env into
+revision control, in which case, they are required to track changes in
+wigwam-base (changes which may create wigwam-base upgrade boundaries
+that publishing across requires special logic to handle).
+
+* Package data in different location
+
+Packages are now downloaded to ext/packages/$package-$version; some
+custom build/install scripts from wigwam 3 reference the download directory 
+directly, and will break: good packages will use the EXT_PACKAGEDIR 
+environment variable, which is set in both major versions, to refer to
+the download directory.

@@ -1,0 +1,46 @@
+#! /bin/sh
+
+. ../functions
+
+. ./test_functions
+
+my_die () {
+  die "test #$compare_count: $@"
+}
+
+pos_check () {
+  compare_count
+  ww_has_componant "$1" "$2" "$3" || 
+    my_die "'$2' has componant '$3' with delimiter '$1'
+       (unless the test is configured wrong.)"
+}
+
+neg_check () { 
+  compare_count
+  ww_has_componant "$1" "$2" "$3" &&
+    my_die "'$2' does NOT have componant '$3' with delimiter '$1'
+       (unless the test is configured wrong.)"
+  return 0
+}
+
+# *_check  DELIM VALUE COMPONANT
+pos_check ':' "foo:bar" "bar"
+neg_check ':' "foo:bar" "car"
+pos_check ' ' "foo bar" "foo"
+neg_check ' ' "foo bar" "car"
+
+pos_check ' ' 'foo bar baz' 'bar'
+neg_check ' ' 'foo bar baz' 'car'
+pos_check ' ' 'bar' 'bar'
+neg_check ' ' 'bar' 'car'
+
+# ww_has_componant is indiferent to sub componants
+pos_check ':' 'foo:bar:baz' 'foo:bar'
+neg_check ':' 'foo:bar:baz' 'foo:baz'
+
+## This section uses ww_has_componant 
+## just to check if a single character is in the string.
+pos_check '' "foo:bar" ":" 
+neg_check '' "foo bar" ":" 
+pos_check '' "foo bar" ' ' 
+neg_check '' "foo:bar" ' '

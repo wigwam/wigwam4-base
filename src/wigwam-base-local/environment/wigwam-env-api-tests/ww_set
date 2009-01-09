@@ -1,0 +1,17 @@
+#! /bin/sh
+
+. ../functions
+
+. ./test_functions
+
+# ww_int
+
+# check VAR VALUE
+check () {
+  ww_int_set "$1" "$2"
+  eval 'compare $'"$1"' $2'
+}
+
+foo=""
+check foo bar
+check foo taco

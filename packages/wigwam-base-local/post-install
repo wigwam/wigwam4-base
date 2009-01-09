@@ -1,0 +1,104 @@
+#! /bin/sh
+
+. "$PLAYPEN_ROOT/ext/libexec/functions/configurable-functions"
+
+configurable_source --once --exportguard libexec/environment/load-environment
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/wigwam-base-functions
+
+overwrite_or_install () \
+  {
+    overwrite=0
+    install=1
+
+    if test -f "$2"
+      then
+        storedversion=`                                                 \
+            tail -n 2 "$2"                                                \
+          | perl -ne 'chomp; m%^# WIGWAM_VERSION: (.*)$% && print $1'`
+
+        if test "x$storedversion" = "x$3"
+          then
+            install=0
+          else
+              actualmd5=`                                                     \
+                  perl -ne 'last if m%^# DO NOT EDIT BELOW THIS LINE%; print' \
+                       "$2"                                                   \
+                | ww-md5`
+
+              if test "x$actualmd5" = "x"
+                then
+                  wigwam_base_warn "can't get signature for '$2'"
+                fi
+
+              storedmd5=`                                                     \
+                tail -n 1 "$2" | perl -ne 'm%^# SIGNATURE: (.*)$% && print $1'`
+
+              if test "x$storedmd5" != "x" && test "x$actualmd5" = "x$storedmd5"
+                then
+                  overwrite=1
+                fi
+          fi
+      else
+        overwrite=1
+      fi
+
+    if test "x$install" = "x1"
+      then
+        if test "x$overwrite" = "x0"
+          then
+            cp -f "$1" "$2.dist" || return 1
+
+            if test "x$4" = "x1"
+              then
+                chmod +x "$2.dist" || return 1
+              fi
+
+            wigwam_base_info "$1 copied to $2.dist"
+            wigwam_base_info "please merge changes to $2"
+          else
+            cp -f "$1" "$2" || return 1
+
+            if test "x$4" = "x1"
+              then
+                chmod +x "$2" || return 1
+              fi
+
+            wigwam_base_info "installed $1 to $2"
+          fi
+      else
+        wigwam_base_info "not installing $1"
+      fi
+  }
+
+#---------------------------------------------------------------------
+#                                mainz                                
+#---------------------------------------------------------------------
+
+# (action. type, package, version, args)
+
+# ignore type and action
+action=$1
+shift
+type=$1
+shift
+
+wigwam_base_assert_nonempty "$0" "$1" || exit 1
+wigwam_base_assert_nonempty "$0" "$2" || exit 1
+
+# environment API may have changed
+rm -f "$PLAYPEN_ROOT/ext/etc/load_config_order"
+
+# package files formats may have changed
+packagectl sync --progress
+
+cd "$PLAYPEN_ROOT/ext/build/$1-$2/ww-bootstrap" || exit 1
+
+   overwrite_or_install wigwam-bootstrap                                \
+                        "$PLAYPEN_ROOT/bin/wigwam-bootstrap" "$2" 1     \
+|| exit 1
+overwrite_or_install autogen.sh "$PLAYPEN_ROOT/autogen.sh" "$2" 1 || exit 1
+overwrite_or_install setup-env "$PLAYPEN_ROOT/setup-env" "$2" 0 || exit 1
+overwrite_or_install unsetup-env "$PLAYPEN_ROOT/unsetup-env" "$2" 0 || exit 1
+
+exit 0

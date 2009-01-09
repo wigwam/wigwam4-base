@@ -1,0 +1,18 @@
+#! /bin/sh - for syntax hilighting only
+#
+# Start bootstrap-tail
+#
+PLAYPEN_ROOT=`pwd`/$project
+test "x$from_cvs" = "x1" && {
+  PLAYPEN_ROOT=`pwd`
+}
+
+export PLAYPEN_ROOT
+PATH=$PLAYPEN_ROOT/ext/bin:$PATH
+export PATH
+PERL5LIB=$PERL5LIB:$PLAYPEN_ROOT/ext/lib/perl5
+export PERL5LIB
+
+bootstrap
+
+exit 0

@@ -1,0 +1,23 @@
+#! @PERL@ 
+
+use strict;
+
+use Packagectl::Version qw (to_interval intersect);
+use Wigwam::DB;
+
+my $deps_dbm = shift @ARGV or die "$0: missing deps dbm argument";
+my $package = shift @ARGV or die "$0: missing package argument";
+my $version = shift @ARGV or die "$0: missing version argument";
+
+my $deps = Wigwam::DB::wigdbmopen $deps_dbm, 0666 
+  or die "$0: can't open $deps_dbm: $!";
+
+if ($deps->{"$package\000$version"})
+  {
+    foreach my $dep (split /\000/, $deps->{"$package\000$version"})
+      {
+        print "$dep\n";
+      }
+  }
+
+exit (0);

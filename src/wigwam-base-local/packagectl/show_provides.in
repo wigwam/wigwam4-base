@@ -1,0 +1,23 @@
+#! @PERL@ 
+
+use strict;
+
+use Packagectl::Version qw (to_interval intersect);
+use Wigwam::DB;
+
+my $provides_dbm = shift @ARGV or die "$0: missing provides dbm argument";
+my $package = shift @ARGV or die "$0: missing package argument";
+my $version = shift @ARGV or die "$0: missing version argument";
+
+my $provides = Wigwam::DB::wigdbmopen $provides_dbm, 0666 
+  or die "$0: can't open $provides_dbm: $!";
+
+if ($provides->{"$package\000$version"})
+  {
+    foreach my $provide (split /\000/, $provides->{"$package\000$version"})
+      {
+        print "$provide\n";
+      }
+  }
+
+exit (0);

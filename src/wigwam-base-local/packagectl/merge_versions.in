@@ -1,0 +1,49 @@
+#! @PERL@
+
+use strict;
+
+use Packagectl::Version;
+use Wigwam::DB;
+
+my $version_regex = qr%(\S+)\-(\d+)%;
+
+sub uniq (@)
+{
+  return keys %{{ map { $_ => 1 } @_ }};
+}
+
+my $versions_dbm = shift @ARGV or die "$0: missing versions dbm argument";
+my $archives_dbm = shift @ARGV or die "$0: missing archives dbm argument";
+my $archive = shift @ARGV or die "$0: missing archive argument";
+
+my $versions = Wigwam::DB::wigdbmopen $versions_dbm, 0666 or die;
+my $archives = Wigwam::DB::wigdbmopen $archives_dbm, 0666 or die;
+
+while (defined ($_ = <>))
+  {
+    chomp;
+    die $_ unless m%^(\S.+)\s+($version_regex)%;
+
+    my $package = $1;
+    my $version = $2;
+
+    # NB: AnyDBM_File doesn't define an EXISTS method ... 
+
+    if ($versions->{$package}) 
+      {
+        $versions->{$package} = join ("\000", $versions->{$package}, $version);
+      }
+    else
+      {
+        $versions->{$package} = $version;
+      }
+
+    $archives->{"$package $version"} = $archive;
+  }
+
+while (my ($package, $value) = each %$versions)
+  {
+    $versions->{$package} = 
+      join ("\000", sort { Packagectl::Version::compare ($b, $a) } 
+                         uniq (split /\000/, $value));
+  }

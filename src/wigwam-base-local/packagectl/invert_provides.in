@@ -1,0 +1,52 @@
+#! @PERL@ 
+
+use strict;
+
+use Packagectl::Version;
+use Wigwam::DB;
+
+my $provides_dbm = shift @ARGV or die "$0: missing provides dbm argument";
+my $inverse_dbm = shift @ARGV or die "$0: missing inverse dbm argument";
+
+my $provides = Wigwam::DB::wigdbmopen $provides_dbm, 0666 
+  or die "$0: can't open $provides_dbm";
+
+my $inverse = Wigwam::DB::wigdbmopen $inverse_dbm, 0666 
+  or die "$0: can't open $inverse_dbm";
+
+while (my ($key, $value) = each %$provides)
+  {
+    my @provided = split /\000/, $value;
+
+    foreach my $provide (@provided)
+      {
+        my ($keypack, $keyver) = split /\000/, $key;
+        my ($provpack, $provver) = split /\s/, $provide;
+
+        if ($inverse->{$provpack})
+          {
+            $inverse->{$provpack} = join ("\000", 
+                                          "$keypack $keyver", 
+                                          $inverse->{$provpack});
+          }
+        else
+          {
+            $inverse->{$provpack} = "$keypack $keyver";
+          }
+      }
+  }
+
+foreach my $provpack (keys %$inverse)
+  {
+    $inverse->{$provpack} = 
+      join "\000", 
+        map { $_->[0] }
+          sort {     $b->[1] cmp $a->[1]
+                  || Packagectl::Version::compare ($b->[2], $a->[2]) } 
+            map { my ($p, $v) = split /\s+/, $_, 2;
+                  [ $_, $p, $v ] }
+              keys %{{ map { $_ => 1 } 
+                           split /\000/, $inverse->{$provpack}}};
+    }
+
+exit (0);

@@ -1,0 +1,19 @@
+#! /bin/sh
+# wigwam-bootstrap: builds a Wigwam project from a central package archive.
+# Start bootstrap-head
+
+LANG="C"
+export LANG
+unset LANGUAGE
+unset LC_ALL
+unset LC_CTYPE
+
+wigwam_base_version=@VERSION@
+wigwam_base_release=1
+default_package_archive="http://wigwam-framework.org/package-archive"
+
+id=`basename "$0"`
+cwd=`pwd`
+
+from_cvs=0
+quiet=0

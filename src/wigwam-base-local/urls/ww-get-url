@@ -1,0 +1,37 @@
+#! /bin/sh
+
+. "$PLAYPEN_ROOT/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once --exportguard libexec/environment/load-environment
+
+url=$1
+shift
+
+url_type=`perl -e '$_ = $ARGV[0]; m%^([^:]+):% && print $1' "$url"`
+
+if test "x$url_type" = x
+  then
+    url_type=file
+  fi
+
+   configurable_test_r "libexec/urls/$url_type/get"             \
+|| packagectl install "get-url-type-$url_type"                  \
+||                                                              \
+  {
+    wigwam_base_fatal "ww-get-url $1:"                          \
+                      "i don't know about url type '$url_type'"
+
+    exit 1
+  }
+
+if test $# -eq 0
+  then
+    target=`basename "$url"`
+    configurable_run "libexec/urls/$url_type/get" "$url" "$target"
+  else
+    configurable_run "libexec/urls/$url_type/get" "$url" "$@"
+  fi
+
+exit $?

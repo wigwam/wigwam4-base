@@ -1,0 +1,41 @@
+#! @PERL@ 
+
+use strict;
+
+use Wigwam::DB;
+
+local $SIG{'__WARN__'} = 
+  sub 
+    {  
+      if ($ENV{"WIGWAM_BASE_WARN"})
+        {
+          warn "Warning: ref_files: ", @_;
+        }
+    };
+
+local $SIG{'__DIE__'} = 
+  sub 
+    {  
+      unless ($ENV{"WIGWAM_BASE_NO_FATAL"})
+        {
+          die "Fatal: ref_files: ", @_;
+        }
+
+      exit 1;
+    };
+
+my $files_file = shift @ARGV or die "missing filesfile argument\n";
+my $db_file = shift @ARGV or die "missing dbfile argument\n";
+
+open FILES, $files_file or die "can't open $files_file: $!\n";
+my @filelist = map { chomp; s%^(>|~)\s+%%; $_ } grep { m%^(>|~)% } <FILES>;
+close FILES;
+
+my $db = Wigwam::DB::wigdbmopen $db_file, 0666
+  or die "error wigdbmopen $db_file: $!";
+
+foreach my $file (@filelist)
+  {
+    $db->{$file} ||= 0;
+    ++$db->{$file};
+  }

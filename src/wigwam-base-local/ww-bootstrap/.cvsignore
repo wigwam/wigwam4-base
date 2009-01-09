@@ -1,0 +1,10 @@
+Makefile.in
+bootstrap-functions
+bootstrap-head
+bootstrap-uwget
+wigwam-bootstrap
+wigwam-bootstrap.actual
+Makefile
+autogen.sh
+setup-env
+unsetup-env

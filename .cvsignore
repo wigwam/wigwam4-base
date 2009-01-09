@@ -1,0 +1,5 @@
+ext
+*.dist
+*.local
+setup-env
+unsetup-env

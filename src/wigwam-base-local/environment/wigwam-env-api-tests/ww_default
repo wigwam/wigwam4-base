@@ -1,0 +1,25 @@
+#!/bin/sh
+
+. ../functions
+
+. ./test_functions
+
+# ww_int
+
+# check_new_value VAR VALUE
+check_new_value () {
+  ww_default "$1" "$2"
+  eval 'compare $'"$1"' $2'
+}
+
+# check_old_value VAR VALUE
+check_old_value () {
+  eval "old_value=\$$1"
+  ww_default "$1" "$2"
+  eval 'compare $'"$1"' $old_value'
+}
+
+foo=""
+
+check_new_value foo bar
+check_old_value foo taco

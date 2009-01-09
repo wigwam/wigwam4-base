@@ -1,0 +1,188 @@
+#! @PERL@ 
+
+package Wigwam::DB::Dumb;
+
+use strict;
+
+sub TIEHASH
+{
+  my ($what, $backingfile, $mode) = @_;
+  my $class = ref ($what) || $what;
+
+  my $self = {};
+  $self->{'data'} = {};
+  $self->{'backingfile'} = $backingfile;
+  $self->{'mode'} = $mode;
+
+  local *FILE;
+
+  if (open FILE, $backingfile)
+    {
+RECORD_LOOP:
+      while (1)
+        {
+          my $keylength;
+          my $keylengthpacked;
+          my $key;
+          my $valuelength;
+          my $valuelengthpacked;
+          my $value;
+
+          last RECORD_LOOP unless sysread (FILE, $keylengthpacked, 4) == 4;
+
+          $keylength = unpack ("N", $keylengthpacked);
+
+          if ($keylength)
+            {
+              last RECORD_LOOP 
+                unless sysread (FILE, $key, $keylength) == $keylength;
+            }
+
+          last RECORD_LOOP unless sysread (FILE, $valuelengthpacked, 4) == 4;
+
+          $valuelength = unpack ("N", $valuelengthpacked);
+
+          if ($valuelength)
+            {
+              last RECORD_LOOP 
+                unless sysread (FILE, $value, $valuelength) == $valuelength;
+            }
+
+          $self->{'data'}->{$key} = $value;
+        }
+
+      close FILE;
+    }
+
+  return bless $self, $class;
+}
+
+sub FETCH
+{
+  my ($self, $key) = @_;
+
+  return $self->{'data'}->{$key};
+}
+
+sub STORE
+{
+  my ($self, $key, $value) = @_;
+
+  $self->{'data'}->{$key} = $value;
+  $self->{'modified'} = 1;
+
+  return $value;
+}
+
+sub DELETE
+{
+  my ($self, $key) = @_;
+
+  return delete $self->{'data'}->{$key};
+}
+
+sub CLEAR
+{
+  my ($self) = @_;
+
+  $self->{'data'} = {};
+}
+
+sub EXISTS
+{
+  my ($self, $key) = @_;
+
+  return exists $self->{'data'}->{$key};
+}
+
+sub FIRSTKEY
+{
+  my ($self) = @_;
+
+  my $reset = keys %{$self->{'data'}};  # reset each iterator
+
+  return each %{$self->{'data'}};
+}
+
+sub NEXTKEY
+{
+  my $self = shift;
+
+  return each %{$self->{'data'}};
+}
+
+sub DESTROY
+{
+  my $self = shift;
+
+  if ($self->{'modified'})
+    {
+      local *FILE;
+
+      open FILE, ">$self->{'backingfile'}.$$" or die $!;
+
+      while (my ($key, $value) = each %{$self->{'data'}})
+        {
+          my $keylength = length $key;
+          my $keylengthpacked = pack ("N", $keylength);
+          my $valuelength = length $value;
+          my $valuelengthpacked = pack ("N", $valuelength);
+
+          print FILE $keylengthpacked;
+          print FILE $key;
+          print FILE $valuelengthpacked;
+          print FILE $value;
+        }
+
+      close FILE;
+
+      rename "$self->{'backingfile'}.$$", $self->{'backingfile'};
+
+      chmod $self->{'mode'}, $self->{'backingfile'};
+    }
+}
+
+
+#---------------------------------------------------------------------
+#                             Wigwam::DB                              
+# 
+# Always use Wigwam::DB::Dumb ... for maximum portability.
+#---------------------------------------------------------------------
+
+package Wigwam::DB;
+
+use strict;
+
+sub wigdbmopen ($$)
+{
+  my ($file, $mode) = @_;
+  my %hashvar;
+
+  tie %hashvar, 'Wigwam::DB::Dumb', $file, $mode
+    or die "can't open $file: $!";
+
+  return \%hashvar;
+}
+
+1;
+__END__
+
+=head1 NAME
+
+Wigwam::DB - Wrapper around appropriate system database interface.
+
+=head1 SYNOPSIS
+
+tie %flass, 'Wigwam::DB', $file, $mode;
+
+print $flass->{'turg'};
+$flass->{'mega'} = 'ultra';
+
+untie %flass;
+
+=head1 DISCUSSION
+
+This used to be a way to select from an appropriate system-supplied DB driver, 
+but nowadays, it always uses an internal one, for maximum portability.
+
+=cut

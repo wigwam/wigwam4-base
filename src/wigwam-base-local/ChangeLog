@@ -1,0 +1,98 @@
+4.3.2 ( not yet released )
+
+* unset LC_CTYPE in wigwam-bootstrap. (pm)
+* look for version-independent options file in packagectl methods. (pm)
+* explicitly list environment variables in etc/unsanitized. (pm)
+* fix PS1 bug: never unset unsanitized variables. (pm)
+* typo, wigwam_base_assert_nonempty() said not when it should not. (fess)
+
+4.3.1
+
+* Fix cpio options, -a and -m are mutually exclusive. (pm)
+* Eliminate non-relocatibility in load_config_order. (pm)
+
+-- Paul Mineiro <paul@mineiro.com> Tue Feb 24 17:37:30 PST 2004
+
+4.3.0
+
+* Have wigdo eval argument list. (pm)
+* Always use Wigwam::DB::Dumb. (pm) 
+  (increment minor version due to upgrade incompatibility)
+* Expand patch files named "patch". (pm)
+* Adjust cpio options in BASE/unpack to facilitate incremental builds. (pm)
+
+-- Paul Mineiro <paul@mineiro.com> Wed Feb 11 13:39:48 PST 2004
+
+4.2.0
+
+* Ignore package supplied installed_files file. (pm)
+* Don't cleanup ext/src for local packages. (pm)
+* Fix: Don't clobber installed_files file before reinstall. (pm)
+  (increment minor version because of this bug)
+* Fix: Match perl_makefile_options case from wigwam3 in make/build. (pm)
+
+-- Paul Mineiro <paul@mineiro.com> Wed Feb  4 10:39:05 PST 2004
+
+4.1.1
+
+* Environment variable to override auto-sync in packagectl. 
+  Mark WIGWAM_PACKAGECTL_NO_AUTO_SYNC unsanitized by default. (pm)
+* reinstall/upgrade package methods; defaults are to uninstall then
+  install.  wigwam-base will override with install then uninstall. (pm)
+* Fix spurious configure warning. (pm)
+* Allow apply_patch to signal failure. (pm)
+* Environment-variable switchable auto-cleanup of ext/src. (pm)
+* Mark MANPATH unsanitized by default. (pm)
+
+-- Paul Mineiro <paul@mineiro.com> Mon Feb  2 14:21:13 PST 2004
+
+4.1.0
+
+* Planner overhaul.  Provides now generate conflicts.  (pm)
+* Fix: Sort providers by version when inverting provide database. (pm)
+* Atomic write of backing file in Wigwam::DB::Dumb. (pm)
+* Fix: Match wigwam3 behavior wrt move_files_up in BASE/unpack. (pm)
+* Fix: Atomic update of load-config-order in load-environment. (pm)
+* Mark PERL5LIB interactive, due to Wigwam::DB. (pm)
+* Reference counting files in ext/ for uninstall. 
+  This requires a --force-rebuild on publish, so increment minor
+  version number. (pm)
+* Implement reinstall as install/uninstall pair; allow for temporary 
+  double installation of packages to faciliate this. (pm)
+* More restrictive regex for finding in-project defined package versions; 
+  require version number to either begin with a digit, or be 'local'. 
+  This prevents confusion for packages whose names are prefixes of each other. (pm)
+* Delete removed packages when 'packagectl update-packages' (pm)
+* Fix: version specific package overrides have higher priority than non-version specific in BASE/unpack. (pm)
+
+-- Paul Mineiro <paul@mineiro.com> Mon Jan 19 13:38:58 PST 2004
+
+4.0.2
+
+* Fix .local override bug in planner. (pm)
+* Extensible ww-get-url. (pm)
+* wigwam-base.profile bugfixes. (pm)
+* Fix setup-env/unsetup-env executable bit set bug. (pm)
+* Fix non-executable package methods bug. (pm)
+* Track wigwam3 changes in packagectl/make/ methods wrt eval. (pm)
+* Honor "dont_expand_tarballs" in packagectl/BASE/unpack. (pm)
+* Honor 'pre/post_build_script' in packagectl/make/build. (pm)
+* Fix 'no_build_style' => 'no_build_phase' in packagectl/make/build. (pm)
+* Use LDFLAGS for -L, LIBS for -l. (pm)
+* Make env api available to package methods via BASE/functions. (pm)
+* Use gnumake to build wigwam-base during bootstrap. (pm)
+
+-- Paul Mineiro <paul@mineiro.com> Tue Dec 23 10:55:23 PST 2003
+
+4.0.1
+
+* Don't compute installed_files if provided by package or project override (pm).
+* Don't check setup-env or unsetup-env into CVS by default. (pm)
+* perl 5.005 compatibility fixes (verbotten: 'our', 'use warnings') (pm)
+
+-- Paul Mineiro <paul@mineiro.com> Mon Dec 15 16:13:41 PST 2003
+
+4.0
+
+* Initial release.  See README.Wigwam3
+

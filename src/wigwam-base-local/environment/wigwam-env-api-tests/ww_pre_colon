@@ -1,0 +1,17 @@
+#! /bin/sh
+
+. ../functions
+
+. ./test_functions
+
+# ww_pre_colon
+
+foo=""
+ww_pre_colon foo bar:blah
+compare  $foo "bar:blah" 
+
+ww_pre_colon foo blah
+compare "$foo" "bar:blah" 
+
+ww_pre_colon foo blah:de:bar:dah
+compare "$foo" "de:dah:bar:blah" 

@@ -1,0 +1,487 @@
+#! @PERL@
+
+use Getopt::Long;
+
+# these need to be package variables for symbolic references to work
+
+@main::shell_variables = qw (HOME PATH CDPATH MAIL MAILCHECK MAILPATH 
+                             PS1 PS2 IFS TERM HISTSIZE PWD OLDPWD PPID);
+
+@main::wigwam_log_variables = qw (WIGWAM_BASE_WARN
+                                  WIGWAM_BASE_NO_INFO
+                                  WIGWAM_BASE_NO_CRITICAL
+                                  WIGWAM_BASE_NO_FATAL
+                                  WIGWAM_PROPELLER_MODE
+                                  WIGWAM_IS_PUBLISHING);
+
+@main::cvs_variables = qw (CVSROOT CVSREAD RCSBIN CVSEDITOR 
+                           CVS_IGNORE_REMOTE_ROOT CVS_RSH
+                           CVS_SERVER CVSWRAPPERS);
+
+@main::ssh_variables = qw (DISPLAY SSH_ASKPASS SSH_AUTH_SOCK
+                           SSH_CONNECTION SSH_ORIGINAL_COMMAND SSH_TTY TZ);
+
+@main::login_variables = qw (LOGNAME USER);
+
+@main::screeen_variables = qw (COLUMNS LINES LOCKPRG NETHACKOPTIONS 
+                               SCREENCAP SCREENDIR SCREENRC STY
+                               SYSSCREENRC TERMCAP WINDOW);
+
+my %aliases = map { $_ => 1 } qw (shell_variables 
+                                  wigwam_log_variables
+                                  cvs_variables
+                                  ssh_variables
+                                  login_variables
+                                  screen_variables);
+
+my $_SH = "/bin/sh";
+
+my $_perl_dump_env = <<'EOM';
+  sub e 
+    { 
+      $_[0] =~ s/'/\\'/g;
+      return $_[0];
+    }
+  print "{\n";
+  printf("  '%s' => '%s',\n", e($_), e($ENV{$_}) ) for keys %ENV;
+  print "}\n";
+EOM
+
+# this is parsed by the shell 
+# to print out the env to stdout
+my $_dump = quote($_perl_dump_env);
+
+sub cmd 
+  {
+    defined( my $pid = open (SHELL, "-|")) or die "Fork failed: $!. bailing.\n";
+    exec( @_ ) unless $pid; # unless parent.
+    my $start_env = join('',<SHELL>);
+    close(SHELL) or die $! ?  
+      "Error closing subshell for '@_': $!" : 
+      "subshell for '@_' exited " . ($? >> 8) ;
+    return $start_env
+  }
+
+sub sh_cmd
+  {
+    cmd($_SH, '-c', shift)
+  }
+
+sub dequote 
+  {
+    my $value = shift;
+    $value =~ s/^'|'$//g and $value =~ s/'\\''/'/g;
+    return $value;
+  }
+
+# used for both shell and perl.
+sub quote
+  {
+    my $value = shift;
+    $value =~ s/'/'\\''/g;
+    return "'$value'"
+  }
+
+sub print_pairs 
+  {
+    my $hash = shift;
+
+    print 
+      map 
+        { 
+          my $v = $hash->{$_};
+          $v  =~ s/^|\n/\n    /sg;
+          "  $_ = $v\n" 
+        } sort @_;
+  }
+
+# this works for some 'set' output.
+# but some (older?) sh's (on solaris) have unparseable sh output.
+# bah, so we can't really use it.
+sub parse_set_output
+  {
+    my %env;
+    while ( $_[0] =~ m/^([^ =\n']+)=([^ ']*?$|'.*?(?<!\\')'$)/msg )
+      {
+        $env{$1} = dequote($2);
+      }
+    return %env;
+  }
+
+
+#TODO trap errors in these evals.
+
+sub load_current
+  {
+    # we could just use %ENV
+    # but this insures that we don't get extra vars 
+    # from sh, in the after
+    my $value =  sh_cmd("perl -e $_dump");
+    my $new_env;
+    eval "\$new_env = $value";
+    return $new_env;
+  }
+
+sub load_after
+  {
+    my $file = shift;
+    my $value =  sh_cmd(". '$file' > /dev/null; perl -e $_dump");
+    my $old_env;
+    eval "\$old_env = $value";
+    return $old_env;
+  }
+    
+sub load_before_and_after
+  {
+    my $file = shift;
+    my $value = 
+      sh_cmd("perl -e $_dump; echo \"'''ENV_BEFORE_AFTER_DELIM\"; . '$file' > /dev/null && perl -e $_dump");
+    my ( $old, $new ) = split(/^'''ENV_BEFORE_AFTER_DELIM\n/ms, $value);
+    my ($old_env, $new_env);
+    eval "\$old_env = $old";
+    eval "\$new_env = $new";
+    return ( $old_env, $new_env);
+  }
+
+sub modified_keys 
+  {
+    my $old_hash_ref = shift;
+    my $new_hash_ref = shift;
+    return grep 
+      { 
+        defined $old_hash_ref->{$_} &&
+          $old_hash_ref->{$_} ne  $new_hash_ref->{$_} 
+      } keys %$new_hash_ref;
+    # doesn't include deleted keys because they would be in old_hash_ref
+  }
+
+sub deleted_keys
+  {
+    my $old_hash_ref = shift;
+    my $new_hash_ref = shift;
+    return grep { ! defined $new_hash_ref->{$_} } keys %$old_hash_ref; 
+  }
+
+sub new_keys
+  {
+    my $old_hash_ref = shift;
+    my $new_hash_ref = shift;
+    return grep { ! defined $old_hash_ref->{$_} } keys %$new_hash_ref; 
+  }
+
+sub print_delete
+  {
+    my $fh = shift;
+    my $style = shift;
+
+    my $template;
+    if ( $style eq 'csh' )
+      {
+        $template = "unsetenv %s;\n"
+      }
+    else
+      {
+        $template = "unset %s;\n";
+      }
+
+    for ( @_ )
+      {
+        printf $fh ($template, $_) 
+      }
+  }
+
+sub print_set
+  {
+    my $fh = shift;
+    my $style = shift;
+    my $env = shift;
+
+    my $template;
+    for ( @_ )
+      {
+        if ( $style eq 'csh' )
+          {
+            print $fh ("setenv $_ ", quote($env->{$_}), ";\n");
+          }
+        else
+          {
+            print $fh ("$_=", quote($env->{$_}), ";\n");
+            print $fh ("export $_;\n");
+          }
+      }
+  }
+
+
+######################################################################
+# main() as it were.
+
+my $print_do          = 0;
+my $print_undo        = 0;
+my $print_none        = 0;
+my $print_summary     = 0;
+my $list_changed      = 0;
+my $list_modified     = 0;
+my $list_new          = 0;
+my $list_deleted      = 0;
+my $list_after        = 0;
+my $list_before       = 0;
+my $autoexport        = 0;
+
+my $output_style      = 'sh';
+
+my $load_before       = '';
+
+my $save_do           = '';
+my $save_undo         = '';
+my $save_before       = '';
+
+my $sh_file_to_source = '';
+
+#Getopt::Long::Configure('no_ignore_case');
+GetOptions
+  (
+    "print-do"          => \$print_do,
+    "print-undo"        => \$print_undo,
+    "print-summary"     => \$print_summary,
+    "list-changed"      => \$list_changed,
+    "list-modified"     => \$list_modified,
+    "list-new"          => \$list_new,
+    "list-deleted"      => \$list_deleted,
+    "list-before"       => \$list_before,
+    "list-after"        => \$list_after,
+    "print-none"        => \$print_none,
+    "save-do=s"         => \$save_do,
+    "save-undo=s"       => \$save_undo,
+    "save-before=s"     => \$save_before,
+    "load-before=s"     => \$load_before,
+    "output-style=s"    => \$output_style,
+#    "autoexport"        => \$autoexport,
+    "source=s"          => \$sh_file_to_source,
+  );
+
+
+
+##
+## Argument checking.
+##
+
+# $print_do = 1 unless ( $print_undo || $list_changed);
+
+#die "You may only use one of --print-do, --print-undo, and --print-undo\n"
+#  unless ( $print_do ^ $print_undo ^ $list_changed );
+
+die "--output-style must be either sh or csh\n"
+  unless ( $output_style =~ m/^c?sh$/ );
+
+# $print_none = 1 if $print_summary;
+# $print_do = $print_undo = $list_changed = 0 if $print_none;
+
+if ( $sh_file_to_source )
+  {
+    -r $sh_file_to_source ||
+      die "$sh_file_to_source is not readable.\n";
+  }
+# elsif ( $load_before )
+#   {
+#     # do nothing? 
+#   }
+# elsif ( $print_do ||$print_undo || $list_changed )
+#   {
+#     die "you must specify --source or --print-none\n"
+#   }
+# elsif ( ! $save_before )
+#   {
+#     die "you must specify either --save-before or --source\n";
+#   }
+
+
+##
+## load the envs as desired.
+##
+
+my $old_env;
+my $new_env;
+
+if ( $load_before ) 
+  {
+    open (FH, $load_before) || 
+      die "Failed to open before file: $load_before: $!\n";
+    
+    my $old = join('',<FH>);
+    close(FH);
+    #TODO handle eval errors.
+    eval "\$old_env = $old";
+    die "eval failed! $@\n" if $@;
+  }
+
+if ( $sh_file_to_source )
+  {
+    if ( $load_before )
+      {
+        local %ENV = %$old_env;
+        $new_env = load_after($sh_file_to_source);
+      }
+    else
+      {
+        ($old_env, $new_env) = load_before_and_after($sh_file_to_source);
+      }
+  }
+elsif ( $save_before ) 
+  {
+    $old_env = load_current();
+  }
+else
+  {
+    $new_env = load_current();
+  }
+
+## 
+## write saved states
+## 
+
+if ( $save_before )
+  {
+    open(FH, ">$save_before") ||
+      die "Failed to open before file, $save_before, for writing: $!\n";
+    print FH "{\n";
+    for ( keys %$old_env )
+      {
+        printf FH "  %s => %s,\n", quote($_), quote($old_env->{$_});
+      }
+    print FH "}\n";
+    close(FH);
+  }
+
+# if all we had to do was save_before, we probably didn't source
+# anything, and don't have a new_env. no need to go further.
+exit if ( ! $new_env )  ;
+
+## 
+## print and save reports
+## 
+
+my @modified = modified_keys($old_env, $new_env);
+my @deleted  =  deleted_keys($old_env, $new_env);
+my @new      =      new_keys($old_env, $new_env);
+
+if ( @ARGV ) 
+  {
+    my %requested_keys;
+
+    foreach (@ARGV)
+      {
+        if (/^\@all$/)
+          {
+            %requested_keys = map { $_ => 1 } (keys %$old_env, keys %$new_env);
+          }
+        elsif (/^-\@all$/)
+          {
+            %requested_keys = ();
+          }
+        elsif (/^\@debug_variables$/)
+          {
+            my @debug_vars = grep { m%^DEBUG_% } 
+                                  (keys %$old_env, keys %$new_env);
+
+            @requested_keys{ @debug_vars } = 1 x @debug_vars;
+          }
+        elsif (/^-\@debug_variables$/)
+          {
+            my @debug_vars = grep { m%^DEBUG_% } 
+                                  (keys %$old_env, keys %$new_env);
+
+            delete @requested_keys{ @debug_vars };
+          }
+        elsif (/^-\@wigwam_guard_variables$/)
+          {
+            my @wigwam_guard_vars = grep { m%^__guard_% } 
+                                           (keys %$old_env, keys %$new_env);
+
+            delete @requested_keys{ @wigwam_guard_vars };
+          }
+        elsif (/^\@(\w+)$/ && $aliases{$1})
+          {
+            @requested_keys{ @$1 } = (1) x @$1;
+          }
+        elsif (/^-\@(\w+)$/ && $aliases{$1})
+          {
+            delete @requested_keys{ @$1 };
+          }
+        elsif (/^-(.+)$/)
+          {
+            delete $requested_keys{$1};
+          }
+        else
+          {
+            $requested_keys{$_} = 1;
+          }
+      }
+
+    @modified = grep { defined $requested_keys{$_} } @modified;
+    @deleted  = grep { defined $requested_keys{$_} } @deleted ;
+    @new      = grep { defined $requested_keys{$_} } @new     ;
+  }
+
+if ( $print_summary )
+  {
+    print "New vars:\n";
+    print_pairs($new_env, @new);
+    print "Modified vars:\n";
+    print_pairs($new_env, @modified);
+    print "Deleted vars:\n";
+    print_pairs($old_env, @deleted);
+
+    exit;
+  }
+
+# TODO maybe do something with a little more code reuse
+# than the following plow through.
+
+if ( $save_undo )
+  {
+    open (FH, ">$save_undo") || die "Failed to open file $save_undo for writing: $!\n";
+    print_set(FH, $output_style, $old_env, @modified, @deleted);
+    print_delete(FH, $output_style, @new);
+    close(FH) || die "Close of file $save_undo failed: $!\n";
+  }
+
+if ( $save_do ) 
+  {
+    open (FH, ">$save_do") || die "Failed to open file $save_do for writing: $!\n";
+    print_set(FH, $output_style, $new_env, @modified, @new);
+    print_delete(FH, $output_style, @deleted);
+    close(FH) || die "Close of file $save_do failed: $!\n";
+  }
+
+# TODO maybe ouput in the order given by the arguments
+
+if ( $print_undo )
+  {
+    print_set(STDOUT, $output_style, $old_env, @modified, @deleted);
+    print_delete(STDOUT, $output_style, @new);
+  }
+
+if ( $print_do )
+  {
+    print_set(STDOUT, $output_style, $new_env, @modified, @new);
+    print_delete(STDOUT, $output_style, @deleted);
+  }
+
+if ( $list_changed )
+  {
+    print "$_\n" for (@modified, @new, @deleted)
+  }
+
+if ( $list_modified ) { print "$_\n" for (@modified) }
+if ( $list_new      ) { print "$_\n" for (@new     ) }
+if ( $list_deleted  ) { print "$_\n" for (@deleted ) }
+
+if ( $list_before )
+  {
+    print "$_\n" for (keys %$old_env )
+  }
+
+if ( $list_after )
+  {
+    print "$_\n" for (keys %$new_env )
+  }

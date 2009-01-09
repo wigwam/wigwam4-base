@@ -1,0 +1,8 @@
+#! /bin/sh
+
+. ../functions
+
+# ww_int_load_exports
+
+echo >&2 "SKIP: No good way to test ww_int_load_exports() " \
+  "without being installed." 

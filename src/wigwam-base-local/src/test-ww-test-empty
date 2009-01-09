@@ -1,0 +1,14 @@
+#! /bin/sh
+
+rm -f flass
+touch flass
+
+./ww-test-empty flass || exit 1
+
+echo "yoyo" > flass
+
+./ww-test-empty flass && exit 1
+
+rm -f flass
+
+exit 0

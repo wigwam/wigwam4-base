@@ -1,0 +1,7 @@
+#! /bin/sh
+
+filename=`perl -e '$_ = $ARGV[0]; s%^([^:]+):%%; print' "$1"`
+
+cp -f "$filename" "$2"
+
+exit $?

@@ -1,0 +1,1190 @@
+#! @PERL@ 
+
+package Packagectl::PackagesDb;
+
+use strict;
+
+use Packagectl::Version;
+use Wigwam::DB;
+
+sub TIEHASH
+{
+  my $what = shift;
+  my $backingfile = shift or die;
+
+  my $self = {};
+  my $class = ref ($what) || $what;
+
+  my $cache = Wigwam::DB::wigdbmopen $backingfile, 0666 
+   or die "error wigdbmopen $backingfile: $!";
+
+  $self->{'dbfile'} = $cache;
+  $self->{'overrides_checked'} = {};
+  $self->{'overrides'} = {};
+
+  return bless $self, $class;
+}
+
+sub FETCH
+{
+  my ($self, $package) = @_;
+
+  if (! exists $self->{'overrides_checked'}->{$package})
+    {
+      my %local_packages;
+
+      if (   -d "$ENV{'PLAYPEN_ROOT'}/packages"
+          && opendir (DIR, "$ENV{'PLAYPEN_ROOT'}/packages"))
+        {
+          my $quotedpackage = quotemeta ($package);
+
+          %local_packages = 
+               map { $_->[0] => 1 }
+                 grep { -d $_->[1] }
+                   map {    m%^$quotedpackage-(\d.+|local)$%
+                         && [ $1, "$ENV{'PLAYPEN_ROOT'}/packages/$_" ] }
+                     grep { m%^$quotedpackage-(\d.+|local)$% }
+                       readdir DIR;
+
+          closedir DIR;
+        }
+
+      if (   -d "$ENV{'PLAYPEN_ROOT'}/packages/$package/"
+          && -f "$ENV{'PLAYPEN_ROOT'}/packages/$package/type")
+        {
+          $local_packages{"local"} = 1;
+        }
+
+      if (keys %local_packages)
+        {
+          if ($self->{'dbfile'}->{$package})
+            {
+              my @dbfile_packages = split /\000/, $self->{'dbfile'}->{$package};
+
+              @local_packages{@dbfile_packages} = (1) x @dbfile_packages;
+            }
+
+          $self->{'overrides'}->{$package} = 
+            join "\000", 
+            sort { return 0 if $a eq $b;
+                   return 1 if $a eq "local";
+                   return -1 if $b eq "local";
+                   return scalar Packagectl::Version::compare ($b, $a); }
+            keys %local_packages;
+        }
+
+      $self->{'overrides_checked'}->{$package} = 1;
+    }
+
+  return (exists $self->{'overrides'}->{$package}) 
+           ? $self->{'overrides'}->{$package} : $self->{'dbfile'}->{$package};
+}
+
+package Packagectl::DependencyDb;
+
+use strict;
+
+use Wigwam::DB;
+
+sub TIEHASH
+{
+  my $what = shift;
+  my $backingfile = shift or die;
+
+  my $self = {};
+  my $class = ref ($what) || $what;
+
+  my $cache = Wigwam::DB::wigdbmopen $backingfile, 0666 
+   or die "error wigdbmopen $backingfile: $!";
+
+  $self->{'dbfile'} = $cache;
+  $self->{'overrides_checked'} = {};
+  $self->{'overrides'} = {};
+
+  return bless $self, $class;
+}
+
+sub FETCH
+{
+  my ($self, $key) = @_;
+
+  if (! exists $self->{'overrides_checked'}->{$key})
+    {
+      my ($package, $version) = split /\000/, $key;
+
+      my $depfile;
+
+      foreach my $file ("$package/dep",
+                        "$package/dep.local",
+                        "$package-$version/dep",
+                        "$package-$version/dep.local")
+        {
+          $depfile = $file if -r "$ENV{'PLAYPEN_ROOT'}/packages/$file";
+        }
+
+      if (defined ($depfile))
+        {
+          my @deps;
+          local *DEP;
+
+          open DEP, "$ENV{'PLAYPEN_ROOT'}/packages/$depfile" or die $!;
+
+          while (defined ($_ = <DEP>))
+            {
+              chomp;
+
+              push @deps, $_;
+            }
+
+          close (DEP);
+
+          $self->{'overrides'}->{$key} = join "\000", @deps;
+        }
+
+      $self->{'overrides_checked'}->{$key} = 1;
+    }
+
+  return (exists $self->{'overrides'}->{$key}) 
+           ? $self->{'overrides'}->{$key} : $self->{'dbfile'}->{$key};
+}
+
+package Packagectl::ConflictDb;
+
+use strict;
+
+use Wigwam::DB;
+
+sub TIEHASH
+{
+  my $what = shift;
+  my $backingfile = shift;
+
+  my $self = {};
+  my $class = ref ($what) || $what;
+
+  my $cache = Wigwam::DB::wigdbmopen $backingfile, 0666 
+    or die "error wigdbmopen $backingfile: $!";
+
+  $self->{'dbfile'} = $cache;
+  $self->{'overrides_checked'} = {};
+  $self->{'overrides'} = {};
+
+  return bless $self, $class;
+}
+
+sub FETCH
+{
+  my ($self, $key) = @_;
+
+  if (! exists $self->{'overrides_checked'}->{$key})
+    {
+      my ($package, $version) = split /\000/, $key;
+
+      my $conflictfile;
+
+      foreach my $file ("$package/conflict",
+                        "$package/conflict.local",
+                        "$package-$version/conflict",
+                        "$package-$version/conflict.local")
+        {
+          $conflictfile = $file if -r "$ENV{'PLAYPEN_ROOT'}/packages/$file";
+        }
+
+      if (defined ($conflictfile))
+        {
+          my @conflicts;
+          local *CONFLICT;
+
+          open CONFLICT, 
+               "$ENV{'PLAYPEN_ROOT'}/packages/$conflictfile" or die $!;
+
+          while (defined ($_ = <CONFLICT>))
+            {
+              chomp;
+
+              push @conflicts, $_;
+            }
+
+          close (CONFLICT);
+
+          $self->{'overrides'}->{$key} = join "\000", @conflicts;
+        }
+
+      $self->{'overrides_checked'}->{$key} = 1;
+    }
+
+  return (exists $self->{'overrides'}->{$key}) 
+         ? $self->{'overrides'}->{$key} : $self->{'dbfile'}->{$key};
+}
+
+package Packagectl::ProvideDb;
+
+use strict;
+
+use Wigwam::DB;
+
+sub TIEHASH
+{
+  my $what = shift;
+  my $backingfile = shift;
+
+  my $self = {};
+  my $class = ref ($what) || $what;
+
+  my $cache = Wigwam::DB::wigdbmopen $backingfile, 0666 
+    or die "error wigdbmopen $backingfile: $!";
+
+  $self->{'dbfile'} = $cache;
+  $self->{'overrides'} = {};
+  $self->{'overrides_checked'} = {};
+  $self->{'hashreturn'} = {};
+
+  return bless $self, $class;
+}
+
+sub FETCH
+{
+  my ($self, $key) = @_;
+
+  if (! exists $self->{'overrides_checked'}->{$key})
+    {
+      my %provides;
+
+      my ($package, $version) = split /\000/, $key;
+
+      my $providesfile;
+
+      foreach my $file ("$package/provides",
+                        "$package/provides.local",
+                        "$package-$version/provides",
+                        "$package-$version/provides.local")
+        {
+          $providesfile = $file if -r "$ENV{'PLAYPEN_ROOT'}/packages/$file";
+        }
+
+      if (defined ($providesfile))
+        {
+          local *PROVIDE;
+
+          open PROVIDE, "$ENV{'PLAYPEN_ROOT'}/packages/$providesfile" or die $!;
+
+          while (defined ($_ = <PROVIDE>))
+            {
+              chomp;
+              my ($provpackage, $provversion) = split /\s+/, $_, 2;
+
+              $provversion ||= $version;
+
+              $provides{$provpackage} = $provversion;
+            }
+
+          close (PROVIDE);
+
+          $self->{'hashreturn'}->{$key} = \%provides;
+        }
+      elsif ($self->{'dbfile'}->{$key})
+        {
+          $self->{'hashreturn'}->{$key} = 
+            { map { my ($p, $v) = split /\s+/, $_, 2; 
+                    $v ||= $version; 
+                    $p => $v }
+              split /\000/, 
+                    $self->{'dbfile'}->{$key} };
+        }
+
+      $self->{'overrides_checked'}->{$key} = 1;
+    }
+
+  return $self->{'hashreturn'}->{$key};
+}
+
+#---------------------------------------------------------------------
+#                           mainz package
+#---------------------------------------------------------------------
+
+package Main;
+
+use strict;
+
+use Data::Dumper;
+use Packagectl::Version qw (to_interval intersect does_intersect 
+                            is_empty is_point union);
+use Wigwam::DB;
+
+local $SIG{'__WARN__'} = 
+  sub 
+    {  
+      if ($ENV{"WIGWAM_BASE_WARN"})
+        {
+          warn "Warning: plan: ", @_;
+        }
+    };
+
+local $SIG{'__DIE__'} = 
+  sub 
+    {  
+      unless ($ENV{"WIGWAM_BASE_NO_FATAL"})
+        {
+          die "Fatal: plan: ", @_;
+        }
+
+      exit 1;
+    };
+
+# computeProvides
+#
+# the union of the all the provides of each installed package
+
+sub computeProvides ($$)
+{
+  my ($installed, $providesdb) = @_;
+
+  my %provides;
+
+  foreach my $package (keys %$installed)
+    {
+      my $version = $installed->{$package};
+
+      my $p = $providesdb->{"$package\000$version"};
+
+      foreach my $providep (keys %$p)
+        {
+          my $providev = $p->{$providep};
+          $provides{$providep} = union ($provides{$providep} || [], 
+                                        to_interval ($providev));
+        }
+    }
+
+  return \%provides;
+}
+
+# computeDependencies
+#
+# the intersection of all the dependencies of each installed package
+
+sub computeDependencies ($$)
+{
+  my ($installed, $depdb) = @_;
+
+  my %deps;
+
+  foreach my $package (keys %$installed)
+    {
+      my $version = $installed->{$package};
+
+      if ($depdb->{"$package\000$version"})
+        {
+          my @deps = split /\000/, $depdb->{"$package\000$version"};
+
+          foreach my $dep (@deps)
+            {
+              my ($depp, $depv) = split /\s+/, $dep, 2;
+
+              $deps{$depp} ||= to_interval ("any");
+              $deps{$depp} = intersect ($deps{$depp}, to_interval ($depv));
+            }
+        }
+    }
+
+  return \%deps;
+}
+
+# computeConflicts
+#
+# the union of all the conflicts of each installed package
+
+sub computeConflicts ($$)
+{
+  my ($installed, $conflictdb) = @_;
+
+  my %conflicts;
+
+  foreach my $package (keys %$installed)
+    {
+      my $version = $installed->{$package};
+
+      if ($conflictdb->{"$package\000$version"})
+        {
+          my @conflicts = split /\000/, $conflictdb->{"$package\000$version"};
+
+          foreach my $conflict (@conflicts)
+            {
+              my ($conflictp, $conflictv) = split /\s+/, $conflict, 2;
+
+              $conflicts{$conflictp} = union ($conflicts{$conflictp} || [],
+                                              to_interval ($conflictv));
+            }
+        }
+    }
+
+  return \%conflicts;
+}
+
+# isLegal
+# 
+# A set of installed packages is legal if all dependencies are
+# satisfied and no conflicts are satisfied.
+
+sub isLegal ($$$$)
+{
+  my ($installed, $depdb, $conflictdb, $providesdb) = @_;
+
+  # check that all dependencies are installed or provided
+
+  my $provides = computeProvides ($installed, $providesdb);
+
+  my $deps = computeDependencies ($installed, $depdb);
+
+  foreach my $package (keys %$deps)
+    {
+      do
+        {
+          warn "illegal: dependency for package '$package' ",
+               "which is not installed";
+          return 0;
+        }
+      unless    exists $installed->{$package} 
+             || exists $provides->{$package};
+
+      my $version =   (exists $installed->{$package}) 
+                    ? to_interval ($installed->{$package})
+                    : $provides->{$package};
+
+      do
+        {
+          warn "illegal: dependency for package '$package' is unsatisfied";
+          return 0;
+        }
+      unless does_intersect ($deps->{$package}, $version);
+    }
+
+  # check that all conflicts are neither installed nor provided
+
+  my $conflicts = computeConflicts ($installed, $conflictdb);
+
+  foreach my $package (keys %$conflicts)
+    {
+      next unless    exists $installed->{$package} 
+                  || exists $provides->{$package};
+
+      my $version =   (exists $installed->{$package}) 
+                    ? to_interval ($installed->{$package})
+                    : $provides->{$package};
+
+      do
+        {
+          warn "illegal: conflict for package '$package' active";
+          return 0;
+        }
+      if does_intersect ($conflicts->{$package}, to_interval ($version));
+    }
+
+  return 1;
+}
+
+# isImpossible
+# 
+# A set of (required) installed packages is impossible to make consistent
+# if packages are inconsistent with required dependencies
+# or required conflicts.
+#
+# NB: (! isImpossible) does not imply isLegal
+
+sub isImpossible ($$$$)
+{
+  my ($reqinstalled, $depdb, $conflictdb, $providesdb) = @_;
+
+  # check that all dependencies are either uninstalled or satisfied
+
+  my $provides = computeProvides ($reqinstalled, $providesdb);
+
+  my $deps = computeDependencies ($reqinstalled, $depdb);
+
+  foreach my $package (keys %$deps)
+    {
+      next unless exists $reqinstalled->{$package} || $provides->{$package};
+
+      my $version =   (exists $reqinstalled->{$package})
+                    ? to_interval ($reqinstalled->{$package})
+                    : $provides->{$package};
+
+      do
+        {
+          warn "impossible: dependency for package '$package' is unsatisfied";
+          return 1;
+        }
+      unless does_intersect ($deps->{$package}, $version);
+    }
+
+  # check that all conflicts are neither installed nor provided
+
+  my $conflicts = computeConflicts ($reqinstalled, $conflictdb);
+
+  foreach my $package (keys %$conflicts)
+    {
+      next unless    exists $reqinstalled->{$package} 
+                  || exists $provides->{$package};
+
+      my $version =   (exists $reqinstalled->{$package})
+                    ? to_interval ($reqinstalled->{$package})
+                    : $provides->{$package};
+
+      do
+        {
+          warn "impossible: conflict for package '$package' active";
+          return 1;
+        }
+      if does_intersect ($conflicts->{$package}, $version);
+    }
+
+  return 0;
+}
+
+sub trySatisfyConstraint ($$$$$$$$$$$$$)
+{
+  my ($package, $provides, $deps, $conflicts, $external, $installed, 
+      $required, $packdb, $depdb, $conflictdb, $providesdb, $inversedb, 
+      $maxtry) = @_;
+
+  return 0 if exists $installed->{$package} && $required->{$package};
+
+  my $dep = $deps->{$package} || to_interval ("any");
+  my $conflict = $conflicts->{$package} || [];
+
+  unless ($required->{$package})
+    {
+      # look for a different package version to satisfy the constraint
+
+      if ($packdb->{$package})
+        {
+          foreach my $version (split /\000/, $packdb->{$package})
+            {
+              if (   does_intersect ($dep, to_interval ($version))
+                  && ! does_intersect ($conflict, to_interval ($version)))
+                {
+                  my $oldversion;
+
+                  return 0 if --$$maxtry <= 0;
+                  
+                  $oldversion = $installed->{$package} 
+                    if exists $installed->{$package};
+
+                  $installed->{$package} = $version;
+                  $required->{$package} = 1;
+
+                  warn "try install $package $version";
+
+                  return 1 if
+                    &findConsistent ($external, $installed, $required, 
+                                     $packdb, $depdb, $conflictdb, 
+                                     $providesdb, $inversedb, $maxtry);
+
+                  delete $required->{$package};
+                  delete $installed->{$package};
+                  $installed->{$package} = $oldversion if defined ($oldversion);
+                }
+            }
+        }
+    }
+
+  # look for a provider to satisfy the dependency
+
+  my $oldversion;
+  
+  $oldversion = $installed->{$package} if exists $installed->{$package};
+  delete $installed->{$package};
+
+  if ($inversedb->{$package})
+    {
+      warn "inversedb->{$package} = $inversedb->{$package}";
+
+      foreach my $provider (split /\000/, $inversedb->{$package})
+        {
+          my ($providerpack, $providerversion) = split /\s+/, $provider, 2;
+
+          next if $required->{$providerpack};
+
+          my $provides = $providesdb->{"$providerpack\000$providerversion"};
+
+          warn "provider: $provider ($providerpack $providerversion)";
+
+          my $providedversion = $provides->{$package};
+
+          # take into account active dependency on the provider package
+
+          my $providerdep = 
+            intersect ($deps->{$providerpack} || to_interval ("any"),
+                       $external->{$providerpack} || to_interval ("any"));
+
+          my $providerconflict = $conflicts->{$providerpack} || [];
+
+          if (   does_intersect ($dep, to_interval ($providedversion))
+              && ! does_intersect ($conflict, to_interval ($providedversion))
+              && does_intersect ($providerdep, to_interval ($providerversion))
+              && ! does_intersect ($providerconflict, 
+                                   to_interval ($providerversion)))
+            {
+              my $oldproviderversion;
+
+              last if --$$maxtry <= 0;
+
+              $oldproviderversion = $installed->{$providerpack} 
+                if exists $installed->{$providerpack};
+
+              $installed->{$providerpack} = $providerversion;
+              $required->{$providerpack} = 1;
+
+              warn "try install provider $providerpack $providerversion";
+
+              return 1 if
+                &findConsistent ($external, $installed, $required, 
+                                 $packdb, $depdb, $conflictdb, 
+                                 $providesdb, $inversedb, $maxtry);
+
+              delete $required->{$providerpack};
+              delete $installed->{$providerpack};
+              $installed->{$providerpack} = $oldproviderversion
+                if defined ($oldproviderversion);
+            }
+        }
+    }
+
+  $installed->{$package} = $oldversion if defined ($oldversion);
+
+  return 0;
+}
+
+sub isSatisfied ($$$)
+{
+  my ($external, $installed, $providesdb) = @_;
+
+  my $provides = computeProvides ($installed, $providesdb);
+
+  foreach my $package (keys %$external)
+    {
+      do
+        {
+          warn "unsatisfied: constraint for package '$package' ",
+               "which is not installed";
+          return 0;
+        }
+      unless    exists $installed->{$package} 
+             || exists $provides->{$package};
+
+      my $version =   (exists $installed->{$package}) 
+                    ? to_interval ($installed->{$package})
+                    : $provides->{$package};
+
+      do
+        {
+          warn "unsatisfied: constraint for package '$package' not met";
+          return 0;
+        }
+      unless does_intersect ($external->{$package}, $version);
+    }
+
+  return 1;
+}
+
+# TODO: this procedure tries packages in no particular order
+#       might want to try packages in some order, 
+#       e.g., conflicts before no-conflicts, to fail out earlier
+
+sub findConsistent ($$$$$$$$$)
+{
+  my ($external, $installed, $required, $packdb, $depdb, 
+      $conflictdb, $providesdb, $inversedb, $maxtry) = @_;
+
+  my $islegal = isLegal ($installed, $depdb, $conflictdb, $providesdb);
+  my $issatisfied = isSatisfied ($external, $installed, $providesdb);
+
+  return 1 if $islegal && $issatisfied;
+
+  warn "findConsistent: configuration is illegal" unless $islegal;
+  warn "findConsistent: configuration is unsatisfied" unless $issatisfied;
+
+  my %reqinstalled = map { $_ => $installed->{$_} }
+                     grep { $required->{$_} }
+                     keys %$installed;
+
+  do
+    {
+      warn "findConsistent: configuration impossible";
+      return 0;
+    }
+  if isImpossible (\%reqinstalled, $depdb, $conflictdb, $providesdb);
+
+  my $provides = computeProvides ($installed, $providesdb);
+  my $deps = computeDependencies ($installed, $depdb);
+  my $conflicts = computeConflicts ($installed, $conflictdb);
+
+  warn "installed: ", Dumper ($installed);
+  warn "required: ", Dumper ($required);
+  warn "provides: ", Dumper ($provides);
+  warn "deps: ", Dumper ($deps);
+  warn "conflicts: ", Dumper ($conflicts);
+
+  # try to simultaneously satisfy an unsatisfied dependency / constraint
+
+  foreach my $package (keys %{{ map { $_ => 1 } (keys %$deps,
+                                                 keys %$external) }})
+    {
+      next if $required->{$package};
+
+      my $constraint = intersect ($deps->{$package} || to_interval ("any"),
+                                  $external->{$package} || to_interval ("any"));
+
+      if (   exists $installed->{$package}
+          || exists $provides->{$package})
+        {
+          my $version =   (exists $installed->{$package}) 
+                        ? to_interval ($installed->{$package})
+                        : $provides->{$package};
+
+          next if does_intersect ($constraint, $version);
+        }
+
+      return 0 if --$$maxtry <= 0;
+
+      warn "try satisfy dependency/constraint for '$package'";
+
+      return 1 if trySatisfyConstraint ($package, 
+                                        $provides,
+                                        $deps,
+                                        $conflicts,
+                                        $external,
+                                        $installed,
+                                        $required,
+                                        $packdb,
+                                        $depdb,
+                                        $conflictdb,
+                                        $providesdb,
+                                        $inversedb,
+                                        $maxtry);
+    }
+
+  return 0;
+}
+
+sub computeDependencyGraphNode ($$$$;$$)
+{
+  my ($depdb, $inverseprovidesdb, $versions, $package, $visited, $root) = @_;
+
+  $visited ||= {};
+
+  if (defined ($root))
+    {
+      do { warn "$root has circular dependency"; return } if $root eq $package;
+    }
+  else
+    {
+      $root = $package;
+    }
+
+  my $version = $versions->{$package};
+
+  unless ($visited->{$package})
+    {
+      my @result;
+
+      $visited->{$package} = [];
+
+      if ($depdb->{"$package\000$version"})
+        {
+          my @direct = map { my ($p, $v) = split /\s+/, $_, 2; $p }
+                           split /\000/, $depdb->{"$package\000$version"};
+
+          foreach my $dep (@direct)
+            {
+              if ($versions->{$dep})
+                {
+                  push @result, $dep;
+                  push @result, 
+                          &computeDependencyGraphNode ($depdb,
+                                                       $inverseprovidesdb,
+                                                       $versions,
+                                                       $dep,
+                                                       $visited,
+                                                       $root);
+                }
+              else
+                {
+                  foreach my $provpack (grep { $versions->{$_} } 
+                                        map { my ($a) = split /\s+/, $_, 2; $a }
+                                        split /\000/, 
+                                              $inverseprovidesdb->{$dep})
+                    {
+                      push @result, $provpack;
+                      push @result, 
+                            &computeDependencyGraphNode ($depdb,
+                                                         $inverseprovidesdb,
+                                                         $versions,
+                                                         $provpack,
+                                                         $visited,
+                                                         $root);
+                    }
+                }
+            }
+
+          $visited->{$package} = \@result;
+        }
+    }
+
+  return @{$visited->{$package}};
+}
+
+sub computeDependencyGraph ($$$@)
+{
+  my ($depdb, $inverseprovidesdb, $versions, @packages) = @_;
+
+  my %graph;
+
+  foreach my $package (@packages)
+    {
+      my @deps = computeDependencyGraphNode ($depdb,
+                                             $inverseprovidesdb,
+                                             $versions,
+                                             $package);
+
+      $graph{$package} = {};
+
+      foreach my $dep (@deps)
+        {
+          $graph{$package}->{$dep} ||= 0;
+          ++$graph{$package}->{$dep};
+        }
+    }
+
+  return %graph;
+}
+
+sub dependencyOrder ($$)
+{
+  my ($a, $b) = @_;
+
+  my $package_a = $a->[0]->[1];
+  my $package_b = $b->[0]->[1];
+
+  my $depends_a = $a->[1];
+  my $depends_b = $b->[1];
+
+  my $num_depends_ab = $depends_a->{$package_b} || 0;
+  my $num_depends_ba = $depends_b->{$package_a} || 0;
+
+  return $num_depends_ab <=> $num_depends_ba;
+}
+
+sub sortPlan ($$)
+{
+  my ($plan, $graph) = @_;
+
+  my @ordered_plan;
+
+  # crappy sort algorithm purposefully in use,
+  # because dependency_order is not transitive
+
+  foreach my $piece (map { [ $_, $graph->{$_->[1]} ] } @$plan)
+    {
+      my $index;
+
+      foreach (0 .. $#ordered_plan)
+        {
+          if (dependencyOrder ($ordered_plan[$_], $piece) > 0)
+            {
+              $index = $_;
+              last;
+            }
+        }
+      
+      if (defined ($index))
+        {
+          splice (@ordered_plan,
+                  $index,
+                  1,
+                  $piece,
+                  $ordered_plan[$index]);
+        }
+      else
+        {
+          push @ordered_plan, $piece;
+        }
+    }
+
+  return map { $_->[0] } @ordered_plan;
+}
+
+sub outputDiff ($$$$)
+{
+  my ($installed, $new_installed, $dep, $inversedb) = @_;
+
+  my @plan;
+  my @upgraded_packages;
+  my %plan_packages;
+
+  foreach my $package (keys %$new_installed)
+    {
+      if (! exists $installed->{$package})
+        {
+          push @plan, [ "install", $package, $new_installed->{$package} ];
+          $plan_packages{$package} = 1;
+        }
+      elsif ($installed->{$package} ne $new_installed->{$package})
+        {
+          push @plan, [ "upgrade", 
+                        $package, 
+                        $new_installed->{$package},
+                        $installed->{$package} ];
+          $plan_packages{$package} = 1;
+
+          push @upgraded_packages, $package;
+        }
+    }
+
+  my %graph = computeDependencyGraph ($dep, 
+                                      $inversedb, 
+                                      $new_installed, 
+                                      keys %$new_installed);
+
+  foreach my $package (keys %$new_installed)
+    {
+      next if $plan_packages{$package};
+
+      if (scalar grep { $graph{$package}->{$_} } @upgraded_packages)
+        {
+          push @plan, [ "reinstall", $package, $new_installed->{$package} ];
+          $plan_packages{$package} = 1;
+        }
+    }
+
+  foreach my $package (keys %$installed)
+    {
+      if (! exists $new_installed->{$package})
+        {
+          push @plan, [ "uninstall", $package, $installed->{$package} ];
+          $plan_packages{$package} = 1;
+        }
+    }
+
+  warn Dumper (\@plan);
+
+  my @ordered_plan = sortPlan (\@plan, \%graph);
+
+  foreach my $piece (@ordered_plan)
+    {
+      my $action = $piece->[0];
+
+      print join ("\t", $action, $piece->[1], $piece->[2]), "\n";
+    }
+}
+
+#---------------------------------------------------------------------
+#                                mainz                                
+#---------------------------------------------------------------------
+
+my $depfile = shift @ARGV or die "missing depfile argument";
+my $conflictfile = shift @ARGV or die "missing conflictfile argument";
+my $providesfile = shift @ARGV or die "missing providesfile argument";
+my $inversefile = shift @ARGV or die "missing inverse file argument";
+my $packagesfile = shift @ARGV or die "missing packages file argument";
+my $installedfile = shift @ARGV or die "missing installed file argument";
+my $action = shift @ARGV or die "missing action";
+my $test = 0;
+
+if ($action eq "--test")
+  {
+    $test = 1;
+    $action = shift @ARGV or die "missing action";
+  }
+
+my %dep;
+tie %dep, 'Packagectl::DependencyDb', $depfile;
+
+my %conflict;
+tie %conflict, 'Packagectl::ConflictDb', $conflictfile;
+
+my %providesdb;
+tie %providesdb, 'Packagectl::ProvideDb', $providesfile;
+
+my $inversedb = Wigwam::DB::wigdbmopen $inversefile, 0666 
+  or die "can't open $inversefile: $!";
+
+my %pack;
+tie %pack, 'Packagectl::PackagesDb', $packagesfile
+  or die "can't open $packagesfile: $!";
+
+# get list of installed packages
+
+my %installed;
+
+if (-e $installedfile)
+  {
+    open FILE, $installedfile 
+      or die "can't open installedfile $installedfile: $!";
+
+    while (defined ($_ = <FILE>))
+      {
+        chomp;
+        my ($package, $version) = split /\s+/, $_, 3;
+        $installed{$package} = $version;
+      }
+
+    close FILE;
+  }
+
+if (   $action eq "install" 
+    || $action eq "upgrade" 
+    || $action eq "uninstall"
+    || $action eq "exact")
+  {
+    my %constraints;
+    my %new_installed = %installed;
+
+    if ($action eq "install")
+      {
+        while (@ARGV > 0)
+          {
+            my $package = shift @ARGV;
+
+            $constraints{$package} ||= to_interval ("any");
+
+            if (@ARGV > 0)
+              {
+                my $version_spec = shift @ARGV;
+
+                $constraints{$package} = 
+                  intersect ($constraints{$package}, 
+                             to_interval ($version_spec));
+              }
+          }
+      }
+    elsif ($action eq "upgrade")
+      {
+        while (@ARGV > 0)
+          {
+            my $package = shift @ARGV;
+
+            $constraints{$package} ||= to_interval ("any");
+
+            if ($new_installed{$package})
+              {
+                $constraints{$package} = 
+                  intersect ($constraints{$package}, 
+                             to_interval ("[$new_installed{$package},)") );
+
+                delete $new_installed{$package};
+              }
+          }
+      }
+    elsif ($action eq "uninstall")
+      {
+        while (@ARGV > 0)
+          {
+            my $package = shift @ARGV;
+
+            delete $new_installed{$package};
+          }
+      }
+    elsif ($action eq "exact")
+      {
+        %new_installed = ();
+
+        while (@ARGV > 0)
+          {
+            my $package = shift @ARGV;
+
+            $constraints{$package} ||= to_interval ("any");
+
+            if (@ARGV > 0)
+              {
+                my $version_spec = shift @ARGV;
+
+                $constraints{$package} = 
+                  intersect ($constraints{$package}, 
+                             to_interval ($version_spec));
+              }
+          }
+      }
+
+    my %required = map { $_ => 1 } 
+                   grep { ! exists $constraints{$_} }
+                   keys %installed;
+
+    foreach my $package (keys %constraints)
+      {
+        if (is_empty ($constraints{$package}))
+          {
+            die "can't satisfy constraints for package '$package'";
+          }
+        elsif (is_point ($constraints{$package}))
+          {
+            warn "pinning exact constraint for package '$package'";
+
+            $new_installed{$package} = $constraints{$package}->[0]->[0];
+            $required{$package} = 1;
+            delete $constraints{$package};
+          }
+      }
+
+    if ($action eq "exact")
+      {
+        die "illegal exact specification"
+          unless isLegal (\%new_installed, \%dep, \%conflict, \%providesdb);
+      }
+    else
+      {
+        my $maxtry = 1000;
+
+        my %reqinstalled = map { $_ => $new_installed{$_} }
+                           grep { $required{$_} }
+                           keys %new_installed;
+
+        die "incompatible required constraints specified"
+          if isImpossible (\%reqinstalled, \%dep, \%conflict, \%providesdb);
+
+        my $success = 
+          findConsistent (\%constraints, \%new_installed, \%required,
+                          \%pack, \%dep, \%conflict, \%providesdb,
+                          $inversedb, \$maxtry);
+
+        die "can't satisfy constraints" unless $success;
+      }
+
+    outputDiff (\%installed, \%new_installed, \%dep, $inversedb) unless $test;
+
+    exit 0;
+  }
+elsif ($action eq "reinstall")
+  {
+    my %reinstall;
+
+    while (@ARGV > 0)
+      {
+        my $package = shift @ARGV;
+
+        die "request to reinstall package '$package' which is not installed"
+          unless $installed{$package};
+
+        $reinstall{$package} = 1;
+      }
+
+    unless ($test)
+      {
+        my @plan = map { [ "reinstall", $_, $installed{$_} ] } keys %reinstall;
+
+        my %graph = computeDependencyGraph (\%dep,
+                                            $inversedb, 
+                                            \%installed,
+                                            keys %reinstall);
+
+        my @ordered_plan = sortPlan (\@plan, \%graph);
+
+        foreach my $piece (@ordered_plan)
+          {
+            print join ("\t", "reinstall", $piece->[1], $piece->[2]), "\n";
+          }
+      }
+  }
+else
+  {
+    die "unknown action '$action'";
+  }

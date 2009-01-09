@@ -1,0 +1,35 @@
+#! @PERL@
+
+use strict;
+
+use Wigwam::DB;
+
+my $conflicts_dbm = shift @ARGV or die "$0: missing conflicts dbm argument";
+
+my $conflictsdb = Wigwam::DB::wigdbmopen $conflicts_dbm, 0666 
+  or die "$0: can't open $conflicts_dbm";
+
+my %seen_package_version;
+
+while (defined ($_ = <>))
+  {
+    chomp;
+    my ($package, $version, $conflicts) = split /\000/, $_;
+
+    if (   $conflictsdb->{"$package\000$version"}
+        && exists $seen_package_version{"$package\000$version"})
+      {
+        my %deps = 
+          map { $_ => 1 } split /\000/, $conflictsdb->{"$package\000$version"};
+
+        $deps{$conflicts} = 1;
+
+        $conflictsdb->{"$package\000$version"} = join ("\000", keys %deps);
+      }
+    else
+      {
+        $conflictsdb->{"$package\000$version"} = $conflicts;
+      }
+
+    $seen_package_version{"$package\000$version"} = 1;
+  }

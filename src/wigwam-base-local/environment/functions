@@ -1,0 +1,364 @@
+#! /bin/sh
+
+configurable_source --once libexec/functions/wigwam-base-functions
+
+ww_has_componant_usage="ww_has_componant DELIM VALUE COMPONANT"
+ww_has_componant () {
+  test "$#" -ne 3 && ww_usage "$ww_has_componant_usage"
+
+  # delim="$1";
+  # value="$2";
+  # componant="$3";
+
+  eval 'case "$2" in
+    # matches middle
+    *'"'$1$3$1'"'*)
+      return 0
+      ;;
+    # begins with
+    '"'$3$1'"'*)
+      return 0
+      ;;
+    # ends with
+    *'"'$1$3'"')
+      return 0
+      ;;
+    # exact match
+    '"'$3'"')
+      return 0
+      ;;
+    *)
+      # do nothing
+      return 1
+      ;;
+  esac'
+}
+
+ww_env_api_reset () {
+  # unset's the function and the usage var of the same name.
+  # unset the vars
+  for ww_env_api_reset_var_or_func in    \
+    ww_has_componant    \
+    ww_pre_delim        \
+    ww_app_delim        \
+    ww_int              \
+    ww_int_clear        \
+    ww_app_colon        \
+    ww_int_app_colon    \
+    ww_int_pre_colon    \
+    ww_int_set          \
+    ww_pre_colon        \
+    ww_set              \
+    ww_int_load_exports \
+  ; do
+    # once for the var
+    unset ${ww_env_api_reset_var_or_func}_usage;
+    # once for the func
+    unset $ww_env_api_reset_var_or_func;
+  done
+
+  unset ww_usage
+  unset ww_env_api_reset
+  unset ww_env_api_reset_var_or_func
+
+  unset ww_env_api_reset
+}
+
+ww_usage () {
+  wigwam_base_fatal "[in $0] Usage: $*"
+  exit 1;
+}
+
+#############
+## wigwam-environment-functions:
+
+# prepend to var PATH using delimiter " "
+# ww_pre_delim PATH "/foo" " "
+ww_pre_delim_usage="ww_pre_delim VARNAME VALUE DELIMITER"
+ww_pre_delim ()  {
+
+  test "$#" -ne 3 && ww_usage "$ww_pre_delim_usage";
+  
+  # check if the new value has the delimiter in it
+  # if we're calling ourselves it shouldn't.
+  if ww_has_componant "" "$2" "$3"; then
+    # if it does, split it up, and loop 
+    # through and recall ourselves with the 
+    # componants.
+
+    # NOTE: not safe for spaced values yet.
+
+    # Have to reverse it first
+    ww_pre_delim_tmp=""
+    ww_pre_delim_val=""
+    for ww_pre_delim_val in `echo $2 | sed -e "s/$3/ /g"`; do
+      ww_pre_delim "ww_pre_delim_tmp" "$ww_pre_delim_val" "$3"
+    done
+    for ww_pre_delim_val in `echo $ww_pre_delim_tmp | sed -e "s/$3/ /g"`; do
+      ww_pre_delim "$1" "$ww_pre_delim_val" "$3"
+    done
+    unset ww_pre_delim_tmp
+    unset ww_pre_delim_val
+
+  else
+
+    eval "ww_pre_delim_old_value=\$$1"
+
+    # check if the old value already has the new value.
+    if ww_has_componant "$3" "$ww_pre_delim_old_value" "$2"; then
+      :  # NoOp, ':' is builtin for true?  
+    else
+      if eval test "\"x\${$1}\"" = x
+        then
+          eval $1=\"\$2\"
+        else
+          eval $1=\"\$2\$3\${$1}\"
+        fi
+    fi
+
+    unset ww_pre_delim_old_value
+  fi
+}
+
+# append to var PATH using delimiter " "
+# ww_app_delim PATH "/foo" " "
+
+ww_app_delim_usage="ww_app_delim VARNAME VALUE DELIMITER"
+ww_app_delim ()  {
+
+  test "$#" -ne 3 && ww_usage "$ww_app_delim_usage";
+
+  # var="$1"
+  # val="$2"
+  # delim="$3" 
+
+  # check if the new value has the delimiter in it
+  if ww_has_componant "" "$2" "$3"; then
+    # if it does, split it up and add each 
+    # portion individually, to do the has_componant check properly
+
+    # NOTE: not safe for spaced values yet.
+    ww_app_delim_val=""
+    for ww_app_delim_val in `echo $2 | sed -e "s/$3/ /g"`; do
+      ww_app_delim "$1" "$ww_app_delim_val" "$3"
+    done
+    unset ww_app_delim_val
+
+  else
+
+    eval "ww_app_delim_old_value=\$$1"
+    if ww_has_componant "$3" "$ww_app_delim_old_value" "$2"; then
+      :  # NoOp, ':' is builtin for true?  
+    else
+      if eval test "\"x\${$1}\"" = x 
+        then
+          eval $1=\"\$2\"
+        else
+          eval $1=\"\${$1}\$3\$2\"
+        fi
+    fi
+
+    unset ww_app_delim_old_value
+
+  fi
+}
+
+
+# Mark a variable for the interactive enviroment
+# equiv to: ww_app_delim interactive_variables "PATH" " "
+# ww_int PATH
+
+ww_int_usage="ww_int VARNAME ... "
+ww_int () {
+  test "$#" -lt 1 && ww_usage "$ww_int_usage"
+
+  for ww_int_var in "$@"; do
+    ww_app_delim interactive_variables "$ww_int_var" " "
+    export "$ww_int_var"
+  done
+  unset ww_int_var
+}
+
+# clear the interactive variables list
+# ww_int_clear
+ww_int_clear () { 
+  unset interactive_variables
+}
+
+# equiv to: ww_pre_delim PATH "/foo" ":"
+# ww_pre_colon PATH "/foo"
+
+ww_pre_colon_usage="ww_pre_colon VAR COMPONANT"
+ww_pre_colon () {
+  test "$#" -ne 2 && ww_usage "$ww_pre_colon_usage"
+  ww_pre_delim "$1" "$2" ":"
+}
+
+
+# equiv to: ww_app_delim PATH "/foo" ":"
+# ww_app_colon PATH "/foo"
+ww_app_colon_usage="ww_app_colon VAR COMPONANT"
+ww_app_colon () {
+  test "$#" -ne 2 && ww_usage "$ww_app_colon_usage"
+  ww_app_delim "$1" "$2" ":"
+}
+
+# equiv to: GOTO_HOME=$PLAYPEN_ROOT; ww_int PLAYPEN_ROOT
+# ww_int_set GOTO_HOME $PLAYPEN_ROOT
+
+ww_int_set_usage="ww_int_set VAR VALUE"
+ww_int_set () { 
+  test "$#" -ne 2 && ww_usage "$ww_int_set_usage"
+  ww_set "$1" "$2"
+  ww_int "$1"
+}
+
+# equiv to: ww_app_colon PATH "/home/anthonym/bin/solaris"; ww_int PATH
+# ww_int_app_colon PATH "/home/anthonym/bin/solaris"
+
+ww_int_app_colon_usage="ww_int_app_colon VAR COMPONANT"
+ww_int_app_colon () {
+  test "$#" -ne 2 && ww_usage "$ww_int_app_colon_usage"
+  ww_app_colon "$1" "$2"
+  ww_int "$1"
+}
+
+# equiv to: ww_pre_colon PATH "/home/anthonym/bin/solaris"; ww_int PATH
+# ww_int_pre_colon PATH "/home/anthonym/bin/solaris"
+
+ww_int_pre_colon_usage="ww_int_pre_colon VAR COMPONANT"
+ww_int_pre_colon () {
+  test "$#" -ne 2 && ww_usage "$ww_int_pre_colon_usage"
+  ww_pre_colon "$1" "$2"; ww_int "$1"
+}
+
+# equiv to: PATH=/foo
+# ww_set PATH "/foo"
+
+ww_set_usage="ww_set VAR VALUE"
+ww_set () {
+  test "$#" -ne 2 && ww_usage "$ww_set_usage"
+  eval "$1=\"$2\"" 
+}
+
+# equiv to test "x$VAR" = "x" && VAR=VALUE
+# ww_default VAR VALUE
+ww_default_usage="ww_default VAR VALUE"
+ww_default () {
+  test "$#" -ne 2 && ww_usage "$ww_def_usage"
+  eval "test \"x\$$1\" = \"x\" && $1=\"$2\""
+}
+
+##
+## Extended API Section.
+##
+
+##
+# sources file and makes entire sourced environment interactive
+# ww_int_load $PLAYPEN_ROOT/etc/environment/workrc
+## 
+# this one is not possible, because basic sh on solaris
+# cannot output it's set vars in a safely parseable form
+
+##
+# load and ww_int any exports from sh file
+# ww_int_load_exports $PLAYPEN_ROOT/etc/environment/workrc
+##
+ww_int_load_exports_usage="ww_int_load_exports FILENAME"
+ww_int_load_exports () { 
+  test "$#" -ne 1 && ww_usage "$ww_int_load_exports_usage"
+  ww_int_load_exports_do="$PLAYPEN_ROOT/ext/tmp/env_interactives_loadtmp.$$"
+  modified_and_new_vars="`$PLAYPEN_ROOT/ext/bin/ww-env-diffs \
+    --source \"$1\" \
+    --save-do \"$ww_int_load_exports_do\" \
+    --list-modified --list-new`"
+
+  # ok, now load the changes
+  . "$ww_int_load_exports_do"
+
+  rm -f "$ww_int_load_exports_do"
+
+  for var in $modified_and_new_vars
+  do
+    ww_int "$var"
+  done
+}
+
+# Output a variable to the interactive env in csh or sh.
+ww_output_int () { 
+  ww_output_varname="$1"
+  eval "ww_output_value=\$$1"
+  ww_output_quoted_value=`echo $ww_output_value | perl -pe "s/'/'\"'\"'/g"`
+  case "$2" in
+    csh)
+      echo "setenv $ww_output_varname '$ww_output_quoted_value';"
+      ;;
+    sh)
+      echo "$ww_output_varname='$ww_output_quoted_value'"
+      echo "export $ww_output_varname"
+      ;;
+    *)
+      wigwam_base_critical "ww_output_int internal error (unknown style '$2')"
+      exit 1
+      ;;
+  esac;
+}
+
+ww_output_unset () {
+  ww_output_varname="$1"
+  case "$2" in
+    csh)
+      echo "unsetenv $ww_output_varname;"
+      ;;
+    sh)
+      echo "unset $ww_output_varname;"
+      ;;
+    *)
+      wigwam_base_critical "ww_output_unset internal error (unknown style '$2')"
+      exit 1
+      ;;
+  esac
+}
+
+ww_grep () {
+
+  perl -e '$e = quotemeta ("$ARGV[1]"); exit ($ARGV[0] !~ m%$e%)' -- "$1" "$2"
+
+  return $?
+}
+
+ww_app_grep () {
+
+  # var = "$1"
+  # val = "$2"
+  # delim = "$3"
+
+  if eval test "\"x\${$1}\"" = x 
+    then
+      eval $1=\"\$2\"
+    else
+      if eval ww_grep "\"\${$1}\"" \"\$2\"; then
+        true
+      else
+        eval $1=\"\${$1}\$3\$2\"
+      fi
+    fi
+}
+
+ww_pre_grep () {
+
+  # var = "$1"
+  # val = "$2"
+  # delim = "$3"
+
+  if eval test "\"x\${$1}\"" = x
+    then
+      eval $1=\"\$2\"
+    else
+      if eval ww_grep "\"\${$1}\"" \"\$2\"; then
+        true
+      else
+        eval $1=\"\$2\$3\${$1}\"
+      fi
+    fi
+}

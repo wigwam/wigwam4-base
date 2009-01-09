@@ -1,0 +1,19 @@
+#! /bin/sh
+
+
+# TODO: should clear out ww_* vars.
+# but right now we just skip the test.
+
+set | grep '^ww_' &&  {
+  echo 2>&1 'ww_* vars already in the environment. have to skip ww_env_api_reset test'
+  exit 0
+}
+
+. ../functions
+
+. ./test_functions
+
+ww_env_api_reset
+
+# no ww_ vars should be left after this test.
+set | grep '^ww_' && die 'left over vars named ww_*' || exit 0

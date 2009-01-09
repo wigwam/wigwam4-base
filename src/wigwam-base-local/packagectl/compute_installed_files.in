@@ -1,0 +1,51 @@
+#! @PERL@ 
+
+use strict;
+
+my $pre_image = shift @ARGV or die "$0: missing pre image argument";
+my $post_image = shift @ARGV or die "$0: missing post image argument";
+
+my %pre;
+
+open PRE, $pre_image or die "$0: can't open $pre_image: $!";
+
+while (defined ($_ = <PRE>))
+  {
+    chomp;
+    my ($file, $mtime) = split /\000/;
+
+    $pre{$file} = $mtime;
+  }
+
+close PRE;
+
+open POST, $post_image or die "$0: can't open $post_image: $!";
+
+while (defined ($_ = <POST>))
+  {
+    chomp;
+    my ($file, $mtime) = split /\000/;
+
+    if (exists $pre{$file})
+      {
+        if ($pre{$file} != $mtime)
+          {
+            print "~ $file\n";
+          }
+
+        delete $pre{$file};
+      }
+    else
+      {
+        print "> $file\n";
+      }
+  }
+
+close POST;
+
+foreach my $file (keys %pre)
+  {
+    print "< $file\n";
+  }
+
+exit (0);

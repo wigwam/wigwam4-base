@@ -1,0 +1,25 @@
+#! @PERL@
+
+use strict;
+
+use Wigwam::DB;
+
+my $types_dbm = shift @ARGV or die "$0: missing types dbm argument";
+
+my $types = Wigwam::DB::wigdbmopen $types_dbm, 0666 
+  or die "$0: can't open $types_dbm";
+
+while (defined ($_ = <>))
+  {
+    chomp;
+    my ($package, $version, $type) = split /\000/, $_;
+
+    next unless length "$package";
+    next unless $package =~ /\S/;
+    next unless length "$version";
+    next unless $version =~ /\S/;
+    next unless length "$type";
+    next unless $type =~ /\S/;
+
+    $types->{"$package\000$version"} = $type;
+  }

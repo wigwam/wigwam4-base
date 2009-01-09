@@ -1,0 +1,51 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once libexec/packagectl/BASE/functions
+
+# (action, type, package, version, args)
+
+packagectl_BASE_parse_args "$@" || exit 1
+
+   configurable_source --once "packages/$package-$version/options"      \
+|| configurable_source --once "packages/$package/options"
+
+rm -rf "${PLAYPEN_ROOT}/ext/src/$package-$version"
+ww-mkdir-p "${PLAYPEN_ROOT}/ext/src/$package-$version" || exit 1
+
+cd "${PLAYPEN_ROOT}/ext/src/$package-$version"
+
+if test "x$dont_expand_tarballs" != "x1"
+  then
+    packagectl_BASE_unpack_all_tarballs "$package" "$version" || exit 1
+  fi
+
+packagectl_BASE_apply_all_patches "$package" "$version" || exit 1
+
+# PLAYPEN_ROOT/src/package-version and PLAYPEN_ROOT/src/package
+# both override PLAYPEN_ROOT/ext/src/package-version
+#
+# do this every time, since overrides are volatile
+
+for path in "$PLAYPEN_ROOT/src/$package" "$PLAYPEN_ROOT/src/$package-$version"
+  do
+    if test -d "$path"
+      then
+        cd "$path"
+          find . -depth -name '*.local' -prune -o -print                \
+        | cpio -pdlmu "$PLAYPEN_ROOT/ext/src/$package-$version"
+
+          find . -name '*.local' -print                                 \
+        | perl -lne 'chomp; $f = $_; s%\.local$%%; print "$f\t$_";'     \
+        | while read local nonlocal
+            do
+              mv -f "$path/$local"                                      \
+                    "$PLAYPEN_ROOT/ext/src/$package-$version/$nonlocal"
+            done
+      fi
+  done
+
+exit 0

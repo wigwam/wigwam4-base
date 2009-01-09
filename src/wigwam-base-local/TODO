@@ -1,0 +1,70 @@
+BASE unpack: guess patch flags, use patch flags canonicalized
+
+fix packages that use provides files with unconstrained versions,
+  because default "any" is going to default "provides package version"
+
+packagectl uninstall completion should only look at installed packages
+
+look for .local package-archives in wigwam-bootstrap
+
+optionaldep
+
+load_config_order uses underbars, not dashes
+
+.local's not working with environment config-order (configurable_glob?)
+
+store etc/project-packages in canonical order to prevent meaningless changes
+
+figure out solaris /bin/sh unset dump core problem
+
+archive type bootstrapping (sortof done wrt url type bootstrapping)
+
+packagectl: automatically see if ext/etc/installed-packages is stale wrt 
+etc/project-packages, and if so, run update-packages
+
+"two phase " update-packages strategy doesn't work in all situations;
+  therefore, fix with single call to planner
+
+hostname -f sh-macros
+
+move -I and -L make options for build/install to front, in case package
+adds other libs prior
+
+have wigwam-bootstrap (not from cvs) installed wigwam-base version X
+
+autogen.sh.d -> standard hooks for autogen.sh
+
+get-installed-version
+
+ignore A conflicts B when A provides B
+
+client-side archive load-balancing
+
+move autogen.sh out-of-the-way to prevent errors due to it's being replaced
+while being interpreted, similar as wigwam-bootstrap
+
+BUG: package-supplied installed-files not being ignored
+
+dirs file for packages: directories that are created before installation
+
+assume shell-script if not executable in configurable_run
+
+wigwam-base post-install needs way to "restart" the package installation 
+process, cuz package pipeline might have changed and still executing old
+script
+
+--quiet flag to wigwam-bootstrap to skip anthropomorphic stuff
+
+rebuilding of packages when overrides change (?) ... maybe a pubtool issue
+
+etc/unsanitized, if it exists, should get dot-dist treatment nicer would
+be 3-way merge
+
+doesn't find patches in non-version specific package override directory
+
+have reinstall call download first, just in case
+
+BUG: packagectl seems to find packages that don't exist in any archive, then
+later finds out they can't be downloaded ... wtf?
+
+TODO: have BASE/download interpret urls file to allow full local packaging

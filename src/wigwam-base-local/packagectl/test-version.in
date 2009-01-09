@@ -1,0 +1,112 @@
+#! @PERL@ 
+
+use strict;
+use Data::Dumper;
+
+BEGIN
+  {
+    unshift @INC, ".";
+    system "ln", "-sf", ".", "Packagectl";
+  }
+
+my $rv = 1;
+
+END
+  {
+    unlink "Packagectl";
+    exit $rv;
+  }
+
+use Packagectl::Version qw (intersect to_interval);
+
+my $version_spec_one;
+my $version_spec_two; 
+my @intersection;
+
+$version_spec_one = "any";
+$version_spec_two = "any";
+@intersection = intersect (to_interval ($version_spec_one), 
+                           to_interval ($version_spec_two));
+
+die "$version_spec_one/$version_spec_two intersection bad"
+  unless    scalar intersect (to_interval ($version_spec_one),
+                              to_interval ($version_spec_two))
+         && @intersection == 1
+         && $intersection[0]->[0] eq "MINUS INFINITY"
+         && $intersection[0]->[1] eq "INFINITY";
+
+$version_spec_two = "1.4.2_01-1";
+@intersection = intersect (to_interval ($version_spec_one), 
+                           to_interval ($version_spec_two));
+
+die "$version_spec_one/$version_spec_two intersection bad"
+  unless    scalar intersect (to_interval ($version_spec_one),
+                              to_interval ($version_spec_two))
+         && @intersection == 1
+         && $intersection[0]->[0] eq "1.4.2_01-1"
+         && $intersection[0]->[1] eq "1.4.2_01-1";
+
+$version_spec_one = "0.4-1";
+$version_spec_two = "0.5-1";
+
+@intersection = intersect (to_interval ($version_spec_one), 
+                           to_interval ($version_spec_two));
+
+die "$version_spec_one/$version_spec_two intersection bad"
+  unless    scalar intersect (to_interval ($version_spec_one),
+                              to_interval ($version_spec_two)) == 0
+         && @intersection == 0;
+
+$version_spec_one = "(0.1-1,]";
+$version_spec_two = "0.2-1";
+
+@intersection = intersect (to_interval ($version_spec_one), 
+                           to_interval ($version_spec_two));
+
+die "$version_spec_one/$version_spec_two intersection bad"
+  unless    scalar intersect (to_interval ($version_spec_one),
+                              to_interval ($version_spec_two)) 
+         && @intersection == 1
+         && $intersection[0]->[0] eq "0.2-1"
+         && $intersection[0]->[1] eq "0.2-1";
+
+$version_spec_one = "4.1.25-1";
+$version_spec_two = "[4.1.25-1,4.1.26)";
+
+@intersection = intersect (to_interval ($version_spec_one), 
+                           to_interval ($version_spec_two));
+
+die "$version_spec_one/$version_spec_two intersection bad"
+  unless    scalar intersect (to_interval ($version_spec_one),
+                              to_interval ($version_spec_two)) 
+         && @intersection == 1
+         && $intersection[0]->[0] eq "4.1.25-1"
+         && $intersection[0]->[1] eq "4.1.25-1";
+
+$version_spec_one = "4.1.25p2-1";
+$version_spec_two = "[4.1.25-1,4.1.26)";
+
+@intersection = intersect (to_interval ($version_spec_one), 
+                           to_interval ($version_spec_two));
+
+die "$version_spec_one/$version_spec_two intersection bad"
+  unless    scalar intersect (to_interval ($version_spec_one),
+                              to_interval ($version_spec_two)) 
+         && @intersection == 1
+         && $intersection[0]->[0] eq "4.1.25p2-1"
+         && $intersection[0]->[1] eq "4.1.25p2-1";
+
+$version_spec_one = "[1.2.8-1,)";
+$version_spec_two = "[1.2.10-1,1.2.10-1]";
+
+@intersection = intersect (to_interval ($version_spec_one), 
+                           to_interval ($version_spec_two));
+
+die "$version_spec_one/$version_spec_two intersection bad"
+  unless    scalar intersect (to_interval ($version_spec_one),
+                              to_interval ($version_spec_two)) 
+         && @intersection == 1
+         && $intersection[0]->[0] eq "1.2.10-1"
+         && $intersection[0]->[1] eq "1.2.10-1";
+
+$rv = 0;

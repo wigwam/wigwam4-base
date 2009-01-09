@@ -1,0 +1,17 @@
+#! /bin/sh
+
+rm -rf flass
+
+./ww-mkdir-p flass/turg/sux || exit 1
+
+test -d "flass/turg/sux" || exit 1
+
+rm -rf flass
+
+echo "yoyo" > flass
+
+./ww-mkdir-p flass/turg/sux 2>/dev/null && exit 1
+
+rm -rf flass
+
+exit 0

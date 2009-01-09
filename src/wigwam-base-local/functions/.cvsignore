@@ -1,0 +1,14 @@
+Makefile.in
+Makefile
+.deps
+.libs
+*.lo
+*.la
+*.backup
+*.sgml
+*~
+*.swp
+*.syntax
+.gdbinit
+sh-macros
+wigwam-base-functions

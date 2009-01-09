@@ -1,0 +1,21 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/sh-macros
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once libexec/packagectl/functions
+configurable_source --once libexec/packagectl/BASE/functions
+
+packagectl_BASE_parse_args "$@" || exit 1
+
+# default reinstall is uninstall, then install
+
+WIGWAM_PROPELLER_MODE="stderr"
+export WIGWAM_PROPELLER_MODE
+                                                                                
+packagectl_pipeline "uninstall" "$package" "$version" 
+packagectl_pipeline "install" "$package" "$version" 
+
+exit $?

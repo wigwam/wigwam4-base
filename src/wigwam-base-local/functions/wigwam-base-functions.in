@@ -1,0 +1,167 @@
+#! /bin/sh
+#
+# the first line is for syntax coloring in VIM only
+# you can't execute this file directly
+# only source it from other shell scripts
+
+wigwam_base_warn () \
+  {
+    if test "x$WIGWAM_BASE_WARN" != "x"
+      then
+        if test "x$1" = "x--no-prefix"
+          then
+            shift
+            echo "$@" 1>&2
+          else
+            echo "Warning: " "$@" 1>&2
+          fi
+      fi
+  }
+
+wigwam_base_warn_printf () \
+  {
+    if test "x$WIGWAM_BASE_WARN" != "x"
+      then
+        if test "x$1" = "x--no-prefix"
+          then
+            shift
+          else
+            printf "Warning: " 1>&2
+          fi
+
+        printf "$@" 1>&2
+      fi
+  }
+
+wigwam_base_info () \
+  {
+    if test "x$WIGWAM_BASE_NO_INFO" = "x"
+      then
+        if test "x$1" = "x--no-prefix"
+          then
+            shift
+            echo "$@" 1>&2
+          else
+            echo "Info: " "$@" 1>&2
+          fi
+      fi
+  }
+
+wigwam_base_info_printf () \
+  {
+    if test "x$WIGWAM_BASE_NO_INFO" = "x"
+      then
+        if test "x$1" = "x--no-prefix"
+          then
+            shift
+          else
+            printf "Info: " 1>&2
+          fi
+
+        printf "$@" 1>&2
+      fi
+  }
+
+wigwam_base_critical () \
+  {
+    if test "x$WIGWAM_BASE_NO_CRITICAL" = "x"
+      then
+        if test "x$1" = "x--no-prefix"
+          then
+            shift
+            echo "$@" 1>&2
+          else
+            echo "Critical: " "$@" 1>&2
+          fi
+      fi
+  }
+
+wigwam_base_critical_printf () \
+  {
+    if test "x$WIGWAM_BASE_NO_CRITICAL" = "x"
+      then
+        if test "x$1" = "x--no-prefix"
+          then
+            shift
+          else
+            printf "Critical: " 1>&2
+          fi
+
+        printf "$@" 1>&2
+      fi
+  }
+
+wigwam_base_fatal () \
+  {
+    if test "x$WIGWAM_BASE_NO_FATAL" = "x"
+      then
+        if test "x$1" = "x--no-prefix"
+          then
+            shift
+            echo "$@" 1>&2
+          else
+            echo "Fatal: " "$@" 1>&2
+          fi
+        fi
+  }
+
+wigwam_base_fatal_printf () \
+  {
+    if test "x$WIGWAM_BASE_NO_FATAL" = "x"
+      then
+        if test "x$1" = "x--no-prefix"
+          then
+            shift
+          else
+            printf "Fatal: " 1>&2
+          fi
+
+        printf "$@" 1>&2
+      fi
+  }
+
+wigwam_base_assert_nonempty () \
+  {
+    if test "x$2" = "x"
+      then
+        wigwam_base_critical "$1: assertion failed: argument is empty" 
+
+        return 1
+      fi
+
+    return 0
+  }
+
+wigwam_base_basename () \
+  {
+    perl -e '$ARGV[0] =~ s%//%/%g; $ARGV[0] =~ s%/$%%g;
+             $ARGV[0] =~ s%[^/]+/%%g; print $ARGV[0]' "$1"
+
+    return $?
+  }
+
+wigwam_base_increment () \
+  {
+    if eval test "x\"\${$1}\"" = x
+      then
+        eval $1=1
+      else
+        if test "x@wigwam_cv_bin_sh_arith@" = "xyes"
+          then
+            eval $1=\$\(\(\${$1}+1\)\)
+          else
+            eval $1=\`expr \${$1} + 1\`
+          fi
+      fi
+  }
+
+wigwam_base_tmpfile_name () \
+  {
+    wigwam_base_increment __wigwam_base_tmpfile_count__
+
+    ww-mkdir-p "$PLAYPEN_ROOT/ext/tmp" || return 1
+
+    eval $1=\"\$PLAYPEN_ROOT/ext/tmp/__tmp-\$\$-count-\${__wigwam_base_tmpfile_count__}\"
+
+    return 0
+  }

@@ -1,0 +1,197 @@
+builtin(include,acwigwam.m4)
+AC_INIT(packagectl/packagectl)dnl
+
+AC_PREREQ(2.57)
+
+WIGWAM_VERSION=4.3.2
+AM_INIT_AUTOMAKE(wigwam-base, ${WIGWAM_VERSION},)
+
+AC_CANONICAL_HOST()
+
+AC_PROG_CC
+AM_MAINTAINER_MODE
+AC_PROG_MAKE_SET
+AM_CONFIG_HEADER(wigwam-config.h)
+
+AC_PROG_EGREP
+AC_PROG_FGREP
+
+WIGWAM_CHECK_SORT_ORDER()
+
+AC_SUBST(wigwam_cv_sort_numbers_ascending)
+AC_SUBST(wigwam_cv_sort_numbers_descending)
+
+WIGWAM_CHECK_DF_KP()
+
+AC_SUBST(wigwam_cv_df_k_P)
+
+WIGWAM_CHECK_GNU_MAKE([] ,
+                      AC_MSG_ERROR(can't find gnu make and wigwam needs it))
+
+AC_SUBST(wigwam_cv_gnu_make)
+
+dnl we want functions and unset
+
+WIGWAM_CHECK_SANE_SHELL([] ,
+                        AC_MSG_ERROR(wigwam requires /bin/sh support functions unset))
+
+AC_SUBST(wigwam_cv_posix_shell)
+
+wigwam_shell_test="`cat shell-test`"
+
+AC_SUBST(wigwam_shell_test)
+
+WIGWAM_CHECK_SHELL_ARITHMETIC()
+
+AC_SUBST(wigwam_cv_bin_sh_arith)
+
+WIGWAM_CHECK_INT_SIZES()
+
+AC_PATH_PROG(PERL, perl)
+
+WIGWAM_CHECK_DATABASE_DRIVER( 
+  [
+    wigwam_database_driver_use="use $wigwam_cv_database_driver;"
+    AC_SUBST(wigwam_database_driver_use) 
+  ],
+  AC_MSG_WARN(using Wigwam::DB::Dumb))
+
+AC_SUBST(wigwam_cv_database_driver)
+
+if test "x$PERL" = "x"
+  then
+    AC_MSG_ERROR(can't find perl and wigwam-base requires it)
+  fi
+
+AC_SUBST(PERL)
+
+AC_PATH_PROG(WC, wc)
+
+AC_MSG_CHECKING(if wc accepts -l flag)
+if test `(echo "yo"; echo "dood") | "$WC" -l` -eq 2
+  then
+    AC_MSG_RESULT(yes)
+  else
+    AC_MSG_RESULT(no)
+  fi
+
+AC_ARG_ENABLE(bootstrap, 
+              AC_HELP_STRING([--disable-bootstrap],
+                             [don't build wigwam-bootstrap]),
+              [ case "$enableval" in
+                  yes)
+                    build_bootstrap=1
+
+                    ;;
+                  *) 
+                    build_bootstrap=0
+
+                    ;;
+                esac ],
+              [ build_bootstrap=1 ])
+
+AM_CONDITIONAL(BUILD_BOOTSTRAP, test "x$build_bootstrap" = "x1")
+
+AC_ARG_ENABLE(check-syntax, 
+              AC_HELP_STRING([--disable-check-syntax], 
+                             [don't do syntax checking]),
+              [ case "$enableval" in
+                  yes)
+                    check_syntax=1
+
+                    ;;
+                  *) 
+                    check_syntax=0
+
+                    ;;
+                esac ],
+              [ check_syntax=1 ])
+
+AM_CONDITIONAL(CHECK_SYNTAX, test "x$check_syntax" = "x1")
+
+AC_ARG_ENABLE(hardcore,
+	      AC_HELP_STRING([--enable-hardcore], [turn on -W -Wall -Werror]),
+	      [case "${enableval}" in
+		yes) HARDCORE=1 ;;
+		no) HARDCORE=0 ;;
+		*) AC_MSG_ERROR(bad value ${enableval} for --enable-hardcore) ;;
+	      esac],[HARDCORE=0])
+
+if test "x$HARDCORE" = "x1"; then
+  CFLAGS="$CFLAGS -Werror -W -Wall -Wmissing-prototypes -Wmissing-declarations -Wpointer-arith -Wcast-align"
+  LDFLAGS="$LDFLAGS -Werror -W -Wall"
+fi
+
+AC_SUBST(WIGWAM_VERSION)
+AC_SUBST(PACKAGE)
+AC_SUBST(VERSION)
+
+AC_OUTPUT([Makefile
+	   ww-make
+           archives/Makefile
+           archives/BASE/Makefile
+           archives/local/Makefile
+           doc/Makefile
+           doc/current-release-url.xml
+           environment/Makefile
+           environment/wigwam-env-api-tests/Makefile
+           environment/wigwam-base.profile
+           environment/ww-env-diffs
+           etc/Makefile
+           functions/Makefile
+           functions/sh-macros
+           functions/wigwam-base-functions
+	   packagectl/Makefile
+           packagectl/compute_installed_files
+           packagectl/image
+           packagectl/invert_provides
+           packagectl/merge_conflicts
+           packagectl/merge_dependencies
+           packagectl/merge_provides
+           packagectl/merge_versions
+           packagectl/merge_types
+           packagectl/plan
+           packagectl/ref_files
+           packagectl/show_conflicts
+           packagectl/show_dependencies
+           packagectl/show_provides
+           packagectl/show_versions
+           packagectl/show_types
+           packagectl/sort_packages
+           packagectl/unref_files
+           packagectl/test-version
+           packagectl/BASE/Makefile
+           packagectl/make/Makefile
+           src/Makefile
+           src/DB.pm
+           src/ww-dump-db
+           src/ww-propeller
+           src/ww-rename
+           urls/Makefile
+           urls/file/Makefile
+           urls/http/Makefile
+           urls/http/uwget
+           ww-bootstrap/Makefile
+           ww-bootstrap/bootstrap-functions
+           ww-bootstrap/bootstrap-head],
+          [chmod +x ww-make
+	   chmod +x environment/ww-env-diffs
+           chmod +x packagectl/compute_installed_files
+           chmod +x packagectl/image
+           chmod +x packagectl/invert_provides
+           chmod +x packagectl/merge_conflicts
+           chmod +x packagectl/merge_dependencies
+           chmod +x packagectl/merge_provides
+           chmod +x packagectl/merge_versions
+           chmod +x packagectl/show_conflicts
+           chmod +x packagectl/show_dependencies
+           chmod +x packagectl/show_provides
+           chmod +x packagectl/show_versions
+           chmod +x packagectl/show_types
+           chmod +x packagectl/sort_packages
+           chmod +x packagectl/plan
+           chmod +x packagectl/test-version
+           chmod +x urls/http/uwget
+           chmod +x src/ww-dump-db
+           chmod +x src/ww-propeller
+           chmod +x src/ww-rename])

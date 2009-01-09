@@ -1,0 +1,18 @@
+#!/bin/cat
+#
+#  Source this script to set up your wigwam runtime environment variables.
+#  it should work for all shells. (the zero hack guesses the right shell type)
+#
+#  To write maximally portable shell scripts, you should eval the output
+#  of ext/libexec/environment/print-setup-environment with the --shell option
+#  to explicitly convey the style of your shell script.
+#
+#  These may also be useful if you get strange
+#  shell errors when you source setup-env.
+#  For example if you have a csh-like shell for which 
+#  the 0-hack is yielding the wrong shell type,
+#  you can force it with
+#
+#  eval "`ext/libexec/environment/print-setup-environment --pid=$$ --shell csh`"
+
+eval "`ext/libexec/environment/print-setup-environment --pid=$$ --0-hack $?0`"

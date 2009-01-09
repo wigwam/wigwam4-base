@@ -1,0 +1,39 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/configurable-functions
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once libexec/packagectl/BASE/functions
+
+# (action, type, package, version, args)
+
+packagectl_BASE_parse_args "$@" || exit 1
+
+   configurable_which "packages/$package-$version/installed_files"      \
+                      installed_files                                   \
+|| configurable_which "packages/$package/installed_files"               \
+                      installed_files                                   \
+||                                                                      \
+  {
+    wigwam_base_fatal "$package-$version uninstall:"                    \
+                      "no installed_files file found"
+    exit 1
+  }
+
+cd "$PLAYPEN_ROOT/ext" || exit 1
+
+   configurable_run "libexec/packagectl/unref_files"                    \
+                    "$installed_files"                                  \
+                    "$PLAYPEN_ROOT/ext/private/file-ref-counts"         \
+||                                                                      \
+  {
+    wigwam_base_fatal "$package-$version uninstall: unref files failed"
+    exit 1
+  }
+
+   test -d "$PLAYPEN_ROOT/ext/src/$package-$version"                    \
+&& rm -rf "$PLAYPEN_ROOT/ext/src/$package-$version"
+
+exit 0

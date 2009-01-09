@@ -1,0 +1,28 @@
+#! /bin/sh
+
+rm -f flass
+touch flass
+
+chmod 444 flass
+
+./ww-test-x flass && exit 1
+
+chmod 544 flass
+
+./ww-test-x flass || exit 1
+
+chmod 454 flass
+
+./ww-test-x flass || exit 1
+
+chmod 445 flass
+
+./ww-test-x flass || exit 1
+
+chmod 222 flass
+
+./ww-test-x flass && exit 1
+
+rm -f flass
+
+exit 0

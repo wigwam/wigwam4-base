@@ -1,0 +1,23 @@
+#! @PERL@ 
+
+use strict;
+
+use Packagectl::Version qw (to_interval intersect);
+use Wigwam::DB;
+
+my $conflicts_dbm = shift @ARGV or die "$0: missing conflicts dbm argument";
+my $package = shift @ARGV or die "$0: missing package argument";
+my $version = shift @ARGV or die "$0: missing version argument";
+
+my $conflicts = Wigwam::DB::wigdbmopen $conflicts_dbm, 0666 
+  or die "$0: can't open $conflicts_dbm: $!";
+
+if ($conflicts->{"$package\000$version"})
+  {
+    foreach my $conflict (split /\000/, $conflicts->{"$package\000$version"})
+      {
+        print "$conflict\n";
+      }
+  }
+
+exit (0);

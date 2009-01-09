@@ -1,0 +1,20 @@
+#! @PERL@ 
+
+use strict;
+
+use Packagectl::Version qw (to_interval intersect);
+use Wigwam::DB;
+
+my $types_dbm = shift @ARGV or die "$0: missing types dbm argument";
+my $package = shift @ARGV or die "$0: missing package argument";
+my $version = shift @ARGV or die "$0: missing version argument";
+
+my $types = Wigwam::DB::wigdbmopen $types_dbm, 0666 
+  or die "$0: can't open $types_dbm: $!";
+
+if ($types->{"$package\000$version"})
+  {
+    print $types->{"$package\000$version"}, "\n";
+  }
+
+exit (0);

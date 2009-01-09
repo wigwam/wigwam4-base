@@ -1,0 +1,87 @@
+#! /bin/sh
+
+. "${PLAYPEN_ROOT}/ext/libexec/functions/configurable-functions"
+
+configurable_source --once libexec/functions/debug-hook
+configurable_source --once libexec/functions/sh-macros
+configurable_source --once libexec/functions/wigwam-base-functions
+configurable_source --once libexec/packagectl/BASE/functions
+
+#---------------------------------------------------------------------
+#                                mainz                                
+#---------------------------------------------------------------------
+
+packagectl_BASE_parse_args "$@" || exit 1
+
+   configurable_source --once "packages/$package-$version/options"      \
+|| configurable_source --once "packages/$package/options"
+
+cd "${PLAYPEN_ROOT}/ext/src/$package-$version" || exit 1
+
+if test "x$build_subdir" != "x"
+  then
+    if test -d "$build_subdir"
+      then
+        cd "$build_subdir" || exit 1
+      else
+        wigwam_base_fatal "$package-$version install:"          \
+                          "package error: no build_subdir:"     \
+                          "'$build_subdir'"
+        exit 1
+      fi
+  fi
+
+# depricated ... use pre-install and post-install files in package
+# need envvars in case of backwards compatibility
+                                                      
+build_path="${PLAYPEN_ROOT}/ext/src/$package-$version"
+rootdir=$PLAYPEN_ROOT
+extdir="$PLAYPEN_ROOT/ext"
+
+if test "x$pre_install_script" != "x"
+  then
+    true
+       eval "$pre_install_script"                                       \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$package-$version install:"                  \
+                          "pre_install_script '$pre_install_script'"    \
+                          "failed"
+        exit 1
+      }
+  fi
+
+if test "x$configure_style" = "x"
+  then
+    configure_style=gnu
+  fi
+
+if test "x$no_install_phase" != "x1"
+  then
+       echo "$install_input"                                            \
+      | eval "$gnumake $build_options $install_options install"         \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$package-$version install:"                  \
+                          "gnumake $build_options $install_options"     \
+                          "install failed"
+        exit 1
+      }
+  fi
+
+# again, depricated ... use post-install file in package
+
+if test "x$post_install_script" != "x"
+  then
+    true
+       eval "$post_install_script"                                      \
+    ||                                                                  \
+      {
+        wigwam_base_fatal "$package-$version install:"                  \
+                          "post_install_script '$post_install_script'"  \
+                          "failed"
+        exit 1
+      }
+  fi
+
+exit 0
